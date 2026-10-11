@@ -1,6 +1,6 @@
-// Pusula çevrimdışı önbelleği: sayfa ağdan gelir (güncellemeler hemen görünsün), ağ yoksa önbellekten.
-const CACHE = 'pusula-v1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+// Nisa Hüseyin çevrimdışı önbelleği: sayfa ağdan gelir (güncellemeler hemen görünsün), ağ yoksa önbellekten.
+const CACHE = 'pusula-v2';
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-ns-180.png', 'icon-ns-192.png', 'icon-ns-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));

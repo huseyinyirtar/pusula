@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Pusula">
+<meta name="apple-mobile-web-app-title" content="Nisa Hüseyin">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#EDF1F2" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0C1316" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icon-180.png">
-<link rel="icon" href="icon-192.png">
-<title>Pusula</title>
+<link rel="apple-touch-icon" href="icon-ns-180.png">
+<link rel="icon" href="icon-ns-192.png">
+<title>Nisa Hüseyin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
@@ -248,7 +248,7 @@ input[type=time]{min-width:104px}
 </head>
 <body>
 
-<div class="app" id="view" aria-live="polite"><p class="muted">Pusula hazırlanıyor…</p></div>
+<div class="app" id="view" aria-live="polite"><p class="muted">Nisa Hüseyin hazırlanıyor…</p></div>
 <button class="mini" id="mini" data-go="odak" hidden></button>
 <nav class="tabs" aria-label="Bölümler"><div class="tabs-in" id="tabs"></div></nav>
 <div id="sheet-root"></div>
@@ -1521,7 +1521,7 @@ function shareWeek() {
   g.fillText(`${S.profile.name || ''} · ${fromKey(keys[0]).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} – ${fromKey(keys[6]).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`, 80, 300); g.globalAlpha = 1;
   const rows = [['Odak', `${Math.floor(f / 60)} sa ${f % 60} dk`], ['Bitirilen iş', String(td)], ['Ortalama uyku', `${avg('s')} sa`], ['Uyku düzeni', ss ? `${ss.score}/100` : '—'], ['Ortalama enerji', `${avg('e')}/5`], ['Ortalama ruh hali', `${avg('m')}/5`], ['Alışkanlık hedefleri', hp]];
   rows.forEach(([l, v], i) => { const y = 420 + i * 112; g.globalAlpha = .75; g.font = '500 36px Figtree, system-ui, sans-serif'; g.fillText(l, 80, y); g.globalAlpha = 1; g.font = '800 54px "Bricolage Grotesque", system-ui, sans-serif'; g.textAlign = 'right'; g.fillText(v, 1000, y + 4); g.textAlign = 'left'; g.globalAlpha = .2; g.fillRect(80, y + 36, 920, 2); g.globalAlpha = 1; });
-  g.font = '600 32px Figtree, system-ui, sans-serif'; g.globalAlpha = .7; g.fillText('Pusula ile kaydedildi', 80, 1270); g.globalAlpha = 1;
+  g.font = '600 32px Figtree, system-ui, sans-serif'; g.globalAlpha = .7; g.fillText('Nisa Hüseyin ile kaydedildi', 80, 1270); g.globalAlpha = 1;
   c.toBlob(async b => {
     if (!b) { toast('Görsel oluşturulamadı.'); return; }
     const file = new File([b], 'pusula-haftam.png', { type: 'image/png' });
@@ -1565,7 +1565,7 @@ function renderOb() {
     return `<button type="button" class="chip" data-act="ob-pick" data-key="${key}" data-v="${k}" data-multi="${multi ? 1 : ''}" aria-pressed="${on}">${esc(Array.isArray(v) ? v[0] : v.l || v)}</button>`; }).join('')}</div>`;
   const calc = kcalFor(d);
   const body = [
-    `<h1>Merhaba, ben Pusula.</h1><p class="muted">Seni tanırsam sana gerçekten yardım edebilirim: gününü enerjine göre planlar, odaklanmanı kolaylaştırır, beslenmeni takip eder ve seni hedeflerine doğru yönlendiririm. 6 kısa adım, yaklaşık 2 dakika.</p>
+    `<h1>Merhaba, hoş geldin.</h1><p class="muted">Seni tanırsam sana gerçekten yardım edebilirim: gününü enerjine göre planlar, odaklanmanı kolaylaştırır, beslenmeni takip eder ve seni hedeflerine doğru yönlendiririm. 6 kısa adım, yaklaşık 2 dakika.</p>
      <label class="field">Sana nasıl hitap edeyim?<input id="ob-name" value="${esc(d.name)}" autocomplete="given-name" placeholder="Adın"></label>
      <div class="two"><label class="field">Doğum yılın<input id="ob-by" type="number" inputmode="numeric" value="${esc(d.birthYear)}" placeholder="1990"></label>
      <label class="field">Cinsiyet<select id="ob-sex"><option value="">Belirtmek istemiyorum</option><option value="k"${d.sex === 'k' ? ' selected' : ''}>Kadın</option><option value="e"${d.sex === 'e' ? ' selected' : ''}>Erkek</option></select></label></div>
@@ -1881,9 +1881,9 @@ function backup() {
   const data = {};
   try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith('pusula:') && k !== 'pusula:apikey') data[k] = localStorage.getItem(k); } } catch {}
   const blob = new Blob([JSON.stringify({ app: 'pusula', at: new Date().toISOString(), data })], { type: 'application/json' });
-  const name = `pusula-yedek-${todayKey()}.json`;
+  const name = `nisa-huseyin-yedek-${todayKey()}.json`;
   const file = new File([blob], name, { type: 'application/json' });
-  if (navigator.canShare?.({ files: [file] })) { navigator.share({ files: [file], title: 'Pusula yedeği' }).catch(() => {}); return; }
+  if (navigator.canShare?.({ files: [file] })) { navigator.share({ files: [file], title: 'Nisa Hüseyin yedeği' }).catch(() => {}); return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 document.addEventListener('change', async e => {
@@ -1893,7 +1893,7 @@ document.addEventListener('change', async e => {
     if (j.app !== 'pusula' || !j.data) throw 0;
     for (const k in j.data) if (k.startsWith('pusula:')) localStorage.setItem(k, j.data[k]);
     toast('Yedek yüklendi.'); setTimeout(() => location.reload(), 800);
-  } catch { toast('Bu dosya bir Pusula yedeği değil.'); }
+  } catch { toast('Bu dosya bir Nisa Hüseyin yedeği değil.'); }
 });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
