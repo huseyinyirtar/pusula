@@ -1569,7 +1569,7 @@ function renderOb() {
      <label class="field">Sana nasıl hitap edeyim?<input id="ob-name" value="${esc(d.name)}" autocomplete="given-name" placeholder="Adın"></label>
      <div class="two"><label class="field">Doğum yılın<input id="ob-by" type="number" inputmode="numeric" value="${esc(d.birthYear)}" placeholder="1990"></label>
      <label class="field">Cinsiyet<select id="ob-sex"><option value="">Belirtmek istemiyorum</option><option value="k"${d.sex === 'k' ? ' selected' : ''}>Kadın</option><option value="e"${d.sex === 'e' ? ' selected' : ''}>Erkek</option></select></label></div>
-     <p class="small muted">Yaş ve cinsiyet yalnızca kalori ihtiyacını hesaplamak için.</p>`,
+     <p class="small muted">Yaş ve cinsiyet yalnızca kalori ihtiyacını hesaplamak için.</p><div class="card" style="gap:8px"><h3>Daha önce kullandın mı?</h3><p class="small muted">Yedek dosyan varsa tanışmayı atla, kayıtların geri gelsin.</p><label class="btn soft" for="ob-restore">Yedeğim var, geri yükle</label><input id="ob-restore" type="file" accept="application/json,.json" hidden></div>`,
     `<h1>Ritmin nasıl?</h1><p class="muted">Herkesin enerjisi günün farklı saatlerinde zirve yapar. Zor işleri zirvene, rutin işleri düşüş saatlerine koyacağım.</p>
      <div class="two"><label class="field">Genelde kaçta kalkarsın?<input id="ob-wake" type="time" value="${esc(d.wake)}"></label><label class="field">Kaçta yatarsın?<input id="ob-sleep" type="time" value="${esc(d.sleep)}"></label></div>
      <h3>Kendini nasıl tanımlarsın?</h3>${chips('chrono', CHRONO)}
@@ -1887,7 +1887,7 @@ function backup() {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 document.addEventListener('change', async e => {
-  if (e.target.id !== 'restore-file' || !e.target.files[0]) return;
+  if (!['restore-file', 'ob-restore'].includes(e.target.id) || !e.target.files[0]) return;
   try {
     const j = JSON.parse(await e.target.files[0].text());
     if (j.app !== 'pusula' || !j.data) throw 0;
