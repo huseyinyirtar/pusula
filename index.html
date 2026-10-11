@@ -171,6 +171,18 @@ input[type=time]{min-width:104px}
 .toms-row i.on{background:var(--tomato)}
 .mini{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(72px + env(safe-area-inset-bottom,0px));z-index:21;background:var(--ink);color:var(--bg);border-radius:99px;padding:8px 16px;font-weight:600;font-size:14px;display:flex;gap:8px;align-items:center;max-width:calc(100% - 32px)}
 .mini b{font-variant-numeric:tabular-nums}
+.segtab{display:grid;grid-template-columns:1fr 1fr;background:var(--sunken);border-radius:12px;padding:4px;gap:4px}
+.segtab button{min-height:40px;border-radius:9px;font-weight:600;color:var(--muted)}
+.segtab button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.cats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cat{min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface);display:flex;align-items:center;gap:8px;padding:0 12px;text-align:left;font-weight:600;font-size:14px;min-width:0;overflow-wrap:anywhere}
+.cat .cdot{background:var(--c)}
+.cat[aria-pressed="true"]{border-color:var(--c);box-shadow:inset 0 0 0 2px var(--c)}
+.cdot{width:10px;height:10px;border-radius:50%;flex:none;display:inline-block}
+.clock{font-family:var(--display);font-size:44px;font-weight:800;line-height:1}
+.stackbar{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px}
+.stackbar i{display:block;height:100%}
+.hbar{display:flex;flex-direction:column;gap:4px}
 .mini .dot{width:8px;height:8px;border-radius:50%;background:var(--tomato)}
 .mini.brk .dot{background:var(--good)}
 
@@ -261,7 +273,7 @@ const ICON = {
 };
 
 // ================= kişiselleştirme sabitleri =================
-const TABS = [['today', 'Bugün'], ['odak', 'Odak'], ['plan', 'Plan'], ['kalori', 'Beslenme'], ['notes', 'Notlar']];
+const TABS = [['today', 'Bugün'], ['odak', 'Zaman'], ['plan', 'Plan'], ['kalori', 'Beslenme'], ['notes', 'Notlar']];
 const MEALS = ['Kahvaltı', 'Öğle', 'Akşam', 'Ara öğün'];
 const TONES = {
   nazik: ['Nazik ve destekleyici', 'sıcak, cesaretlendirici ve nazik'],
@@ -299,6 +311,12 @@ const BREAK_TIPS = [
   'Omuzlarını ve boynunu esnet, 4 derin nefes al.',
   'Telefona dalma; molayı ekransız geçirmek daha çok dinlendirir.',
 ];
+const PALETTE = ['#2F7FC1', '#7A5BC7', '#0E9AA7', '#2E9E5B', '#D9822B', '#8A7F5A', '#6B7C85', '#D64550', '#B07CC6', '#C9A227', '#3C9D8F', '#A0522D'];
+const DEFAULT_CATS = [
+  { k: 'is', l: 'İş', c: '#2F7FC1' }, { k: 'toplanti', l: 'Toplantı', c: '#7A5BC7' }, { k: 'ogrenme', l: 'Öğrenme', c: '#0E9AA7' },
+  { k: 'spor', l: 'Spor', c: '#2E9E5B' }, { k: 'aile', l: 'Aile ve arkadaşlar', c: '#D9822B' }, { k: 'ev', l: 'Ev işleri', c: '#8A7F5A' },
+  { k: 'yol', l: 'Yol', c: '#6B7C85' }, { k: 'telefon', l: 'Telefon ve sosyal medya', c: '#D64550' }, { k: 'dinlen', l: 'Dinlenme', c: '#B07CC6' },
+];
 const MOOD = ['Çok kötü', 'Kötü', 'İdare eder', 'İyi', 'Harika'];
 const ENERGY = ['Bitkin', 'Düşük', 'Orta', 'İyi', 'Dolu dolu'];
 const DEFAULT_PROFILE = {
@@ -308,7 +326,7 @@ const DEFAULT_PROFILE = {
 };
 const normDay = d => ({
   tasks: Array.isArray(d?.tasks) ? d.tasks : [], meals: Array.isArray(d?.meals) ? d.meals : [],
-  focus: Array.isArray(d?.focus) ? d.focus : [], water: Number(d?.water) || 0,
+  focus: Array.isArray(d?.focus) ? d.focus : [], time: Array.isArray(d?.time) ? d.time : [], water: Number(d?.water) || 0,
   checkin: d?.checkin || null, review: d?.review || null,
 });
 function kcalFor(p) {
@@ -326,7 +344,7 @@ const S = {
   mode: 'loading', profile: { ...DEFAULT_PROFILE }, profileLoaded: false, notes: [], habits: [], habitsLoaded: false,
   history: {}, histLoaded: false, day: normDay(), dayLoaded: false, date: todayKey(), tab: 'today', lastTab: null,
   ai: false, coach: { text: '', busy: false, err: '' }, weekly: { text: '', busy: false, err: '' },
-  planSugg: null, planBusy: false, editing: null, ob: null, ci: {}, timer: null,
+  planSugg: null, planBusy: false, editing: null, ob: null, ci: {}, timer: null, track: null, zsub: 'pomo',
 };
 
 // ================= depolama =================
@@ -394,7 +412,7 @@ function watchDay() {
 }
 const focusMin = d => d.focus.reduce((a, f) => a + (Number(f.mins) || 0), 0);
 const sumKcal = d => d.meals.reduce((a, m) => a + (Number(m.kcal) || 0), 0);
-const summarize = d => ({ k: sumKcal(d), w: d.water, m: d.checkin?.mood || 0, e: d.checkin?.energy || 0, s: d.checkin?.sleepH || 0, f: focusMin(d), p: d.focus.length, td: d.tasks.filter(t => t.done).length, tt: d.tasks.length });
+const summarize = d => ({ t: timeByCat(d), k: sumKcal(d), w: d.water, m: d.checkin?.mood || 0, e: d.checkin?.energy || 0, s: d.checkin?.sleepH || 0, f: focusMin(d), p: d.focus.length, td: d.tasks.filter(t => t.done).length, tt: d.tasks.length });
 function writeDay(k, d) {
   const data = clone(d);
   if (S.mode === 'cloud') persist('day:' + k, dayRef(k), data); else LS.set('day:' + k, data);
@@ -440,6 +458,27 @@ function captureThought(text) {
   n = n ? { ...n } : { id: 'inbox', title: 'Aklıma gelenler', body: '', pinned: true, created: Date.now() };
   n.body = (n.body ? n.body + '\n' : '') + `- ${nowHM()} ${text}`;
   saveNote(n);
+}
+
+// ================= zaman takibi =================
+const cats = () => Array.isArray(S.profile.cats) && S.profile.cats.length ? S.profile.cats : DEFAULT_CATS;
+const catOf = k => cats().find(c => c.k === k) || { k, l: 'Silinmiş kategori', c: '#6B7C85' };
+const dur = m => m >= 60 ? `${Math.floor(m / 60)} sa${m % 60 ? ' ' + (m % 60) + ' dk' : ''}` : `${m} dk`;
+const hms = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 3600)}:${pad(Math.floor(s % 3600 / 60))}:${pad(s % 60)}`; };
+function timeByCat(d) { const o = {}; (d.time || []).forEach(e => { o[e.cat] = (o[e.cat] || 0) + (Number(e.mins) || 0); }); return o; }
+function startTrack(k) {
+  if (S.track) stopTrack(true);
+  S.track = { cat: k, startAt: Date.now() }; LS.set('track', S.track);
+  render(); toast(`${catOf(k).l} başladı.`);
+}
+function stopTrack(quiet) {
+  const t = S.track; if (!t) return;
+  S.track = null; LS.set('track', null);
+  const end = Date.now(), mins = Math.round((end - t.startAt) / 60000);
+  if (mins < 1) { if (!quiet) toast('1 dakikadan kısa kayıt eklenmedi.'); render(); return; }
+  changeDay(keyOf(new Date(t.startAt)), d => { d.time.push({ id: newId(), cat: t.cat, start: t.startAt, end, mins, note: '' }); d.time.sort((a, b) => a.start - b.start); })
+    .then(() => { if (!quiet) toast(`${catOf(t.cat).l}: ${dur(mins)} kaydedildi.`); render(); })
+    .catch(() => toast('Kayıt kaydedilemedi.'));
 }
 
 // ================= hesaplar =================
@@ -549,6 +588,7 @@ ${ci}
 PLAN
 ${tasks}
 Odak: ${d.focus.length} pomodoro, ${focusMin(d)} dk
+Zaman kullanımı: ${Object.entries(timeByCat(d)).sort((a, b) => b[1] - a[1]).map(([k, m]) => catOf(k).l + ' ' + dur(m)).join(', ') || 'kayıt yok'}${S.track ? `; şu an ${catOf(S.track.cat).l} yapıyor (${Math.round((Date.now() - S.track.startAt) / 60000)} dk)` : ''}
 Beslenme: ${sumKcal(d)} / ${p.kcalGoal} kcal (${d.meals.map(m => `${m.meal}: ${m.name} ${m.kcal}`).join('; ') || 'kayıt yok'})
 Su: ${d.water}/${p.waterGoal} bardak
 Bugün yapılan alışkanlıklar: ${hDone.join(', ') || 'henüz yok'}
@@ -557,7 +597,7 @@ ${d.review ? `Akşam değerlendirmesi: iyi giden: ${d.review.wins}; minnettar: $
 function weekText() {
   return 'SON 7 GÜN\n' + weekKeys().map(k => {
     const h = histFor(k);
-    return h ? `${fmtShortDay(k)} ${k}: uyku ${h.s || '-'} sa, enerji ${h.e || '-'}/5, ruh hali ${h.m || '-'}/5, odak ${h.f} dk, görev ${h.td}/${h.tt}, ${h.k} kcal, su ${h.w}` : `${fmtShortDay(k)} ${k}: kayıt yok`;
+    return h ? `${fmtShortDay(k)} ${k}: uyku ${h.s || '-'} sa, enerji ${h.e || '-'}/5, ruh hali ${h.m || '-'}/5, odak ${h.f} dk, görev ${h.td}/${h.tt}, ${h.k} kcal, su ${h.w}${h.t && Object.keys(h.t).length ? ', zaman: ' + Object.entries(h.t).map(([c, m]) => catOf(c).l + ' ' + dur(m)).join(', ') : ''}` : `${fmtShortDay(k)} ${k}: kayıt yok`;
   }).join('\n');
 }
 const coachIntro = () => `Sen ${S.profile.name || 'kullanıcı'} için kişisel yaşam koçusun ve onu tanıyorsun. Tonun: ${(TONES[S.profile.tone] || TONES.nazik)[1]}. Türkçe ve ona adıyla hitap ederek yaz. Önerilerin onun kronotipine, enerjisine, zorlandığı alanlara ve "neden"ine dayansın; genel geçer tavsiye verme, verideki somut şeylere değin. En fazla 6 kısa madde kullan, her madde "- " ile başlasın. Tıbbi teşhis koyma; sağlıkla ilgili ciddi bir durumda uzmana yönlendir.`;
@@ -729,13 +769,18 @@ function endBreak(skipped) {
 }
 function cancelFocus() { const T = S.timer; S.timer = { ...idleTimer(), mode: T.mode, cycle: T.cycle, taskId: T.taskId }; saveTimer(); keepAwake(false); render(); }
 function tick() {
-  const T = S.timer;
-  if (!T || T.phase === 'idle') { $('#mini').hidden = true; return; }
+  if (S.track) { const v = hms(Date.now() - S.track.startAt); const a = $('#tr-time'); if (a) a.textContent = v; const b = $('#tr-time2'); if (b) b.textContent = v; }
+  const T = S.timer, mini = $('#mini');
+  if (!T || T.phase === 'idle') {
+    if (S.track && S.tab !== 'odak') { const c = catOf(S.track.cat); mini.hidden = false; mini.className = 'mini'; mini.dataset.z = 'takip'; mini.innerHTML = `<span class="dot" style="background:${c.c}"></span><b>${hms(Date.now() - S.track.startAt)}</b><span>${esc(c.l)}</span>`; }
+    else mini.hidden = true;
+    return;
+  }
+  mini.dataset.z = 'pomo';
   if (!T.paused && T.endAt && Date.now() >= T.endAt) { T.phase === 'focus' ? finishFocus() : endBreak(); return; }
   const v = timerView();
   const tm = $('#tm-time'); if (tm) tm.textContent = v.label;
   const ring = $('#tm-ring'); if (ring) ring.style.strokeDashoffset = String(RING_C * (1 - v.frac));
-  const mini = $('#mini');
   mini.hidden = S.tab === 'odak';
   mini.className = 'mini' + (T.phase === 'break' ? ' brk' : '');
   const task = S.day.tasks.find(t => t.id === T.taskId);
@@ -835,18 +880,25 @@ function viewToday() {
     </section>
     <div class="stats">
       <button class="stat" data-go="plan"><span class="eyebrow">Görevler</span><span class="big num">${done}/${total}</span><span class="bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></span></button>
-      <button class="stat" data-go="odak"><span class="eyebrow">Odak</span><span class="big num">${fm} dk</span><span class="small muted num">${d.focus.length} pomodoro</span></button>
+      <button class="stat" data-go="odak" data-z="pomo"><span class="eyebrow">Odak</span><span class="big num">${fm} dk</span><span class="small muted num">${d.focus.length} pomodoro</span></button>
       <button class="stat" data-go="kalori"><span class="eyebrow">Kalori</span><span class="big num">${kcal}</span>
         <span class="bar amber${kcal > goal ? ' over' : ''}"><i style="width:${Math.min(100, Math.round(kcal / goal * 100))}%"></i></span>
         <span class="small muted num">${kcal > goal ? `${kcal - goal} kcal fazla` : `${goal - kcal} kcal kaldı`}</span></button>
       <div class="stat"><span class="eyebrow">Su · ${d.water}/${p.waterGoal}</span><div class="water">${water}</div></div>
     </div>
+    ${trackCard()}
     ${habitsCard(true)}
     ${coachCard()}
     ${d.review ? `<p class="banner">Günü kapattın. Minnettar olduğun şeyler: ${esc(d.review.grat || '—')}</p>` : ''}
     ${showCheckin && hour >= 17 ? `<button class="btn" data-act="ci-late">Sabah değerlendirmesini şimdi yap</button>` : ''}
     ${S.ci.late ? checkinCard() : ''}
   </div>`;
+}
+function trackCard() {
+  const tr = S.track;
+  if (!tr) return `<button class="btn soft" data-go="odak" data-z="takip">Şu an ne yapıyorsun? Zamanını kaydet</button>`;
+  const c = catOf(tr.cat);
+  return `<button class="card" data-go="odak" data-z="takip" style="text-align:left"><p class="eyebrow">Şu an</p><div class="row"><span class="cdot" style="background:${c.c}"></span><h2 class="grow">${esc(c.l)}</h2><span class="num" id="tr-time2">${hms(Date.now() - tr.startAt)}</span></div></button>`;
 }
 function coachCard() {
   if (!S.ai) return S.mode === 'loading' ? '' : `<section class="card"><h2>Koçun</h2><p class="small muted">Koçu açmak için Anthropic API anahtarını gir. Seni, planını ve haftanı bilerek yönlendirir.</p><button class="btn soft" data-go="me">Koçu kur</button></section>`;
@@ -864,6 +916,55 @@ function coachCard() {
 }
 
 function viewOdak() {
+  return `<div class="stack">${header('Zaman', S.zsub === 'takip' ? 'Nereye gidiyor?' : 'Pomodoro')}
+    <div class="segtab" role="tablist"><button role="tab" data-act="zsub" data-v="pomo" aria-selected="${S.zsub !== 'takip'}">Pomodoro</button><button role="tab" data-act="zsub" data-v="takip" aria-selected="${S.zsub === 'takip'}">Zaman takibi</button></div>
+    ${S.zsub === 'takip' ? viewTrack() : viewPomo()}</div>`;
+}
+function viewTrack() {
+  const d = S.day, tr = S.track, by = timeByCat(d), total = Object.values(by).reduce((a, b) => a + b, 0);
+  const rows = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  let untracked = 0;
+  if (S.date === todayKey()) { const awake = toMin(nowHM()) - toMin(S.profile.wake); if (awake > 0) untracked = Math.max(0, awake - total - (tr ? Math.round((Date.now() - tr.startAt) / 60000) : 0)); }
+  const weekBy = {};
+  weekKeys(S.date).forEach(k => { const t = k === S.date ? by : (S.history[k]?.t || {}); for (const c in t) weekBy[c] = (weekBy[c] || 0) + t[c]; });
+  const weekRows = Object.entries(weekBy).sort((a, b) => b[1] - a[1]), wmax = weekRows[0]?.[1] || 1;
+  const cur = tr ? catOf(tr.cat) : null;
+  return `
+    <section class="card">
+      ${tr ? `<p class="eyebrow">Şu an</p><div class="row"><span class="cdot" style="background:${cur.c}"></span><h2 class="grow">${esc(cur.l)}</h2></div>
+        <p class="clock num" id="tr-time">${hms(Date.now() - tr.startAt)}</p>
+        <p class="small muted">${hm(new Date(tr.startAt))} saatinden beri. Başka bir şeye geçince ona dokun; bu kayıt kendiliğinden kapanır.</p>
+        <button class="btn primary" data-act="track-stop">Durdur ve kaydet</button>`
+      : `<h2>Şu an ne yapıyorsun?</h2><p class="small muted">Bir şeye başlarken dokun, başka bir şeye geçince ona dokun. Süreler kendiliğinden yazılır.</p>`}
+      <div class="cats">${cats().map(c => `<button class="cat" data-act="track-start" data-k="${c.k}" aria-pressed="${tr?.cat === c.k}" style="--c:${c.c}"><span class="cdot"></span>${esc(c.l)}</button>`).join('')}</div>
+    </section>
+    <section class="card">
+      <div class="row"><h2 class="grow">Bugün nereye gitti?</h2><span class="muted num">${dur(total)}</span></div>
+      ${total ? `<div class="stackbar">${rows.map(([k, m]) => `<i style="width:${m / total * 100}%;background:${catOf(k).c}"></i>`).join('')}</div>
+        <ul class="list">${rows.map(([k, m]) => `<li class="item"><span class="cdot" style="background:${catOf(k).c}"></span><span class="title"><span>${esc(catOf(k).l)}</span></span><span class="num">${dur(m)}</span><span class="muted small num" style="width:42px;text-align:right">%${Math.round(m / total * 100)}</span></li>`).join('')}</ul>`
+      : '<p class="empty">Henüz kayıt yok. Yukarıdan bir etkinliğe dokunarak başla ya da aşağıdan elle ekle.</p>'}
+      ${untracked > 30 ? `<p class="small muted">Uyandığından beri ${dur(untracked)} kaydedilmemiş. Geriye dönük elle ekleyebilirsin.</p>` : ''}
+      ${d.focus.length ? `<p class="small muted">Ayrıca ${d.focus.length} pomodoro ile ${dur(focusMin(d))} odaklandın.</p>` : ''}
+    </section>
+    <form class="card" data-form="time">
+      <h3>Elle ekle</h3>
+      <select id="tm-cat" aria-label="Kategori">${cats().map(c => `<option value="${c.k}">${esc(c.l)}</option>`).join('')}</select>
+      <div class="two"><label class="field">Başlangıç<input id="tm-s" type="time"></label><label class="field">Bitiş<input id="tm-e" type="time"></label></div>
+      <input id="tm-note" placeholder="Not (isteğe bağlı)" autocomplete="off">
+      <button class="btn soft">${ICON.plus}Ekle</button>
+    </form>
+    ${d.time.length ? `<section class="card"><h2>Kayıtlar</h2><ul class="list">${[...d.time].sort((a, b) => a.start - b.start).map(e => `<li class="item"><span class="cdot" style="background:${catOf(e.cat).c}"></span><span class="t num">${hm(new Date(e.start))}</span><span class="title"><span>${esc(catOf(e.cat).l)}</span>${e.note ? `<span class="sub">${esc(e.note)}</span>` : ''}</span><span class="num small">${dur(e.mins)}</span><button class="del" data-act="time-del" data-id="${e.id}" aria-label="Sil">${ICON.x}</button></li>`).join('')}</ul></section>` : ''}
+    <section class="card"><h2>Son 7 gün</h2>
+      ${weekRows.length ? weekRows.map(([k, m]) => `<div class="hbar"><div class="row small"><span class="grow">${esc(catOf(k).l)}</span><span class="num">${dur(m)}</span></div><span class="bar"><i style="width:${m / wmax * 100}%;background:${catOf(k).c}"></i></span></div>`).join('') : '<p class="empty">Kayıt tuttukça haftalık dağılımın burada görünür.</p>'}
+    </section>
+    <form class="card" data-form="cat">
+      <h3>Kategorilerin</h3>
+      <p class="small muted">Silmek için bir kategoriye iki kez dokun.</p>
+      <div class="chips">${cats().map(c => `<button type="button" class="chip" data-act="cat-del" data-k="${c.k}"><span class="cdot" style="background:${c.c}"></span> ${esc(c.l)}</button>`).join('')}</div>
+      <div class="row"><input id="cat-name" class="grow" placeholder="Yeni kategori, örn. Kitap" autocomplete="off"><button class="btn soft">Ekle</button></div>
+    </form>`;
+}
+function viewPomo() {
   const T = S.timer, M = modeOf(T), v = timerView(), running = T.phase !== 'idle';
   const today = S.day, open = sortedTasks(today).filter(t => !t.done);
   const task = today.tasks.find(t => t.id === T.taskId);
@@ -874,8 +975,6 @@ function viewOdak() {
   today.focus.forEach(f => { byTask[f.taskId || ''] = (byTask[f.taskId || ''] || 0) + 1; });
   const tip = BREAK_TIPS[(T.cycle || 0) % BREAK_TIPS.length];
   return `
-  <div class="stack">
-    ${header('Odak', 'Pomodoro')}
     <section class="card timer ${phaseCls}">
       <div class="chips" role="group" aria-label="Odak tarzı">${Object.entries(POMO).map(([k, m]) => `<button class="chip" data-act="pomo-mode" data-k="${k}" aria-pressed="${T.mode === k}" ${running ? 'disabled' : ''}>${m.l}</button>`).join('')}</div>
       <p class="small muted">${M.d}</p>
@@ -917,8 +1016,7 @@ function viewOdak() {
       <div class="row"><h2 class="grow">Bugün</h2><span class="muted num">${today.focus.length} pomodoro · ${focusMin(today)} dk</span></div>
       ${today.focus.length ? `<ul class="list">${Object.entries(byTask).map(([id, c]) => { const t = today.tasks.find(x => x.id === id); return `<li class="item"><span class="title"><span>${esc(t?.title || 'Serbest odak')}</span></span><span class="toms num">${c}${t?.est ? '/' + t.est : ''} pomodoro</span></li>`; }).join('')}</ul>` : '<p class="empty">Henüz odak yok. İlk pomodoro her zaman en zorudur; 25 dakika yeter.</p>'}
     </section>
-    <p class="banner">25 dakika kutsal bir sayı değil. Araştırmalar kısa molaların yorgunluğu azalttığını gösteriyor, ama en iyi süre işin türüne göre değişiyor. Derin işler için Derin modu, akışı bölmek istemiyorsan Esnek modu dene. Telefon kilitlenirse süre yine doğru işler; sayfaya dönünce kaldığı yerden devam eder.</p>
-  </div>`;
+    <p class="banner">25 dakika kutsal bir sayı değil. Araştırmalar kısa molaların yorgunluğu azalttığını gösteriyor, ama en iyi süre işin türüne göre değişiyor. Derin işler için Derin modu, akışı bölmek istemiyorsan Esnek modu dene. Telefon kilitlenirse süre yine doğru işler; sayfaya dönünce kaldığı yerden devam eder.</p>`;
 }
 
 function viewPlan() {
@@ -1232,7 +1330,7 @@ function arm(a, label, fn) {
 }
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-go]');
-  if (g) { go(g.dataset.go); return; }
+  if (g) { if (g.dataset.z) { S.zsub = g.dataset.z; LS.set('zsub', S.zsub); } go(g.dataset.go); return; }
   const a = e.target.closest('[data-act]');
   if (!a) return;
   const id = a.dataset.id, d = S.day;
@@ -1267,6 +1365,11 @@ document.addEventListener('click', e => {
     case 'estimate': estimateKcal(); break;
     case 'pomo-mode': S.timer.mode = a.dataset.k; S.timer.cycle = 0; saveTimer(); render(); break;
     case 'tm-start': startFocus(); break;
+    case 'zsub': S.zsub = a.dataset.v; LS.set('zsub', S.zsub); render(); break;
+    case 'track-start': if (S.track?.cat !== a.dataset.k) startTrack(a.dataset.k); break;
+    case 'track-stop': stopTrack(); break;
+    case 'time-del': d.time = d.time.filter(x => x.id !== id); saveDay(); break;
+    case 'cat-del': arm(a, 'Silmek için tekrar dokun', () => { const list = cats().filter(c => c.k !== a.dataset.k); if (!list.length) { toast('En az bir kategori kalmalı.'); return; } saveProfile({ cats: list }); }); break;
     case 'tm-pause': pauseTimer(); break;
     case 'tm-finish': finishFocus(); break;
     case 'tm-cancel': arm(a, 'Bu pomodoro sayılmayacak. Emin misin?', cancelFocus); break;
@@ -1326,6 +1429,26 @@ document.addEventListener('submit', e => {
       d.review = { wins: $('#rv-wins').value.trim().slice(0, 500), grat: $('#rv-grat').value.trim().slice(0, 500), improve: $('#rv-imp').value.trim().slice(0, 500), at: nowHM() };
       if (saveDay()) toast('Günü kapattın. İyi dinlen.');
       break;
+    }
+    case 'time': {
+      const st = $('#tm-s').value, en = $('#tm-e').value;
+      if (!st || !en) { toast('Başlangıç ve bitiş saatini seç.'); return; }
+      const a1 = fromKey(S.date), b1 = fromKey(S.date);
+      a1.setHours(...st.split(':').map(Number)); b1.setHours(...en.split(':').map(Number));
+      if (b1 <= a1) b1.setDate(b1.getDate() + 1);
+      const mins = Math.round((b1 - a1) / 60000);
+      if (mins > 16 * 60) { toast('Bitiş saati başlangıçtan sonra olmalı.'); return; }
+      d.time.push({ id: newId(), cat: $('#tm-cat').value, start: +a1, end: +b1, mins, note: $('#tm-note').value.trim().slice(0, 120) });
+      d.time.sort((x, y) => x.start - y.start);
+      $('#tm-s').value = ''; $('#tm-e').value = ''; $('#tm-note').value = '';
+      if (saveDay()) toast(`${dur(mins)} eklendi.`);
+      break;
+    }
+    case 'cat': {
+      const n = $('#cat-name').value.trim(); if (!n) return;
+      const list = [...cats()], used = new Set(list.map(c => c.c));
+      list.push({ k: 'c' + newId().slice(-6), l: n.slice(0, 30), c: PALETTE.find(x => !used.has(x)) || PALETTE[list.length % PALETTE.length] });
+      $('#cat-name').value = ''; saveProfile({ cats: list }); break;
     }
     case 'ask': { const q = $('#ask-q').value.trim(); if (!q) return; $('#ask-q').value = ''; askCoach(q.slice(0, 500)); break; }
     case 'thought': { const t = $('#th-text').value.trim(); if (!t) return; captureThought(t.slice(0, 200)); $('#th-text').value = ''; toast('Not alındı. Odağına dön.'); break; }
@@ -1399,6 +1522,7 @@ render();
 (async () => {
   await initStore();
   loadTimer();
+  S.track = LS.get('track', null); S.zsub = LS.get('zsub', 'pomo');
   watchAll();
   S.ai = !!(await sampler());
   render();
