@@ -183,6 +183,25 @@ input[type=time]{min-width:104px}
 .stackbar{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px}
 .stackbar i{display:block;height:100%}
 .hbar{display:flex;flex-direction:column;gap:4px}
+.wdots{display:flex;gap:3px;align-items:center}
+.wdots i{width:9px;height:9px;border-radius:50%;background:var(--sunken);border:1px solid var(--line)}
+.wdots i.done{background:var(--good);border-color:var(--good)}
+.wdots i.joker{background:var(--amber);border-color:var(--amber)}
+.wdots i.today{border:2px solid var(--accent)}
+.hright{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+.wkc{font-size:12px;font-weight:700;color:var(--muted)}
+.wkc.near{color:var(--tomato)}
+.wkc.ok{color:var(--good)}
+.wins{display:flex;flex-wrap:wrap;gap:6px}
+.win{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:13px;font-weight:600;max-width:100%}
+.win svg{width:14px;height:14px;color:var(--good);flex:none}
+.okmark{width:22px;height:22px;border-radius:50%;background:var(--good);color:#fff;display:grid;place-items:center;flex:none}
+.okmark svg{width:14px;height:14px}
+.tag.urg{color:var(--tomato);background:var(--tomato-soft)}
+.tl-cof{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--ink);opacity:.35}
+.ins{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
+.ins li{background:var(--sunken);border-radius:12px;padding:10px 12px;font-size:14px}
+.score{font-family:var(--display);font-size:34px;font-weight:800;line-height:1}
 .mini .dot{width:8px;height:8px;border-radius:50%;background:var(--tomato)}
 .mini.brk .dot{background:var(--good)}
 
@@ -303,7 +322,11 @@ const POMO = {
   derin: { l: 'Derin', d: '50 dk odak · 10 dk mola', focus: 50, short: 10, long: 20, every: 3 },
   esnek: { l: 'Esnek', d: 'Sen bitirince dur · mola süresinin 1/5’i', focus: 0, short: 0, long: 0, every: 4 },
   kisa: { l: 'Isınma', d: '15 dk odak · 3 dk mola', focus: 15, short: 3, long: 10, every: 4 },
+  sekerleme: { l: 'Şekerleme', d: '10 dk kısa uyku · öğleden sonraki düşüş için ideal süre', focus: 10, short: 0, long: 0, every: 1, nap: true },
 };
+const BREAKS = { yuruyus: 'Yürüyüş', esneme: 'Esneme', su: 'Su', goz: 'Gözünü dinlendir', nefes: 'Nefes' };
+const HLEN = { 30: 'Kolay · 30 gün', 66: 'Orta · 66 gün', 120: 'Zor · 120 gün', 180: 'Spor gibi · 180 gün' };
+const CAFFEINE = /kahve|çay|cay|kola|espresso|latte|nescafe|cappuccino|americano|filtre|macchiato|enerji içeceği|red ?bull|monster/i;
 const BREAK_TIPS = [
   'Kalk ve biraz yürü. Kısa hareket molası yorgunluğu azaltır.',
   'Gözlerini dinlendir: 20 saniye boyunca uzağa bak.',
@@ -327,7 +350,7 @@ const DEFAULT_PROFILE = {
 const normDay = d => ({
   tasks: Array.isArray(d?.tasks) ? d.tasks : [], meals: Array.isArray(d?.meals) ? d.meals : [],
   focus: Array.isArray(d?.focus) ? d.focus : [], time: Array.isArray(d?.time) ? d.time : [], water: Number(d?.water) || 0,
-  checkin: d?.checkin || null, review: d?.review || null,
+  checkin: d?.checkin || null, review: d?.review || null, cancels: Array.isArray(d?.cancels) ? d.cancels : [],
 });
 function kcalFor(p) {
   const age = new Date().getFullYear() - Number(p.birthYear), w = Number(p.weightKg), h = Number(p.heightCm);
@@ -410,9 +433,17 @@ function watchDay() {
   } else { S.day = normDay(LS.get('day:' + k, null)); S.dayLoaded = true; }
   render();
 }
+function estSum(d) { let es = 0, ac = 0; d.tasks.forEach(t => { if (t.done && t.est > 0 && t.pomos > 0) { es += t.est; ac += t.pomos; } }); return { es, ac }; }
+function breakStats(d) {
+  const o = {};
+  d.focus.forEach(f => { if (f.after) { o[f.after] = o[f.after] || [0, 0]; o[f.after][0]++; } });
+  (d.cancels || []).forEach(c => { if (c.after) { o[c.after] = o[c.after] || [0, 0]; o[c.after][1]++; } });
+  return o;
+}
+const bedMin = t => { const m = toMin(t); return m < 720 ? m + 1440 : m; };
 const focusMin = d => d.focus.reduce((a, f) => a + (Number(f.mins) || 0), 0);
 const sumKcal = d => d.meals.reduce((a, m) => a + (Number(m.kcal) || 0), 0);
-const summarize = d => ({ t: timeByCat(d), k: sumKcal(d), w: d.water, m: d.checkin?.mood || 0, e: d.checkin?.energy || 0, s: d.checkin?.sleepH || 0, f: focusMin(d), p: d.focus.length, td: d.tasks.filter(t => t.done).length, tt: d.tasks.length });
+const summarize = d => ({ t: timeByCat(d), ...estSum(d), bq: breakStats(d), bt: d.checkin?.bed ? bedMin(d.checkin.bed) : 0, wt: d.checkin?.wakeT ? toMin(d.checkin.wakeT) : 0, k: sumKcal(d), w: d.water, m: d.checkin?.mood || 0, e: d.checkin?.energy || 0, s: d.checkin?.sleepH || 0, f: focusMin(d), p: d.focus.length, td: d.tasks.filter(t => t.done).length, tt: d.tasks.length });
 function writeDay(k, d) {
   const data = clone(d);
   if (S.mode === 'cloud') persist('day:' + k, dayRef(k), data); else LS.set('day:' + k, data);
@@ -501,6 +532,101 @@ function streak(h) {
 function sleepDefault() { let s = toMin(S.profile.wake) - toMin(S.profile.sleep); if (s <= 0) s += 1440; return Math.round(s / 30) / 2; }
 const weekKeys = (end = todayKey()) => [...Array(7)].map((_, i) => addDays(end, i - 6));
 const histFor = k => k === S.date && S.dayLoaded ? summarize(S.day) : S.history[k];
+const fmtMin = m => `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`;
+const weekStart = (k = todayKey()) => { const wd = (fromKey(k).getDay() + 6) % 7; return addDays(k, -wd); };
+const monthKey = (k = todayKey()) => k.slice(0, 7);
+const coffeeCut = () => fmtMin((toMin(S.profile.sleep) - 360 + 1440) % 1440);
+const peakStart = () => (CHRONO[S.profile.chrono] || CHRONO.ara).peak[0];
+const inPeak = t => { const pk = (CHRONO[S.profile.chrono] || CHRONO.ara).peak; return t && t >= pk[0] && t < pk[1]; };
+const goalsList = () => [...new Set([S.profile.woop?.[weekStart()]?.wish, S.profile.monthGoal?.[monthKey()], ...(S.profile.goals || '').split(/[\n,;]+/)].map(x => (x || '').trim()).filter(x => x && x !== '-'))].slice(0, 10);
+const kcalRange = p => { const g = Number(p.kcalGoal) || 2000; return [Number(p.kcalMin) || g - 150, Number(p.kcalMax) || g + 100]; };
+function kcalStatus(kcal, p) {
+  const [lo, hi] = kcalRange(p);
+  if (kcal > hi) return { txt: `Aralığın ${kcal - hi} kcal üstünde`, col: 'var(--bad)', over: true, lo, hi };
+  if (kcal >= lo) return { txt: 'Hedef aralığındasın', col: 'var(--good)', lo, hi };
+  return { txt: `Aralığa ${lo - kcal} kcal var`, col: 'var(--muted)', lo, hi };
+}
+// alışkanlık: haftalık hedef, joker, geri dönüş
+const hTarget = h => clamp(Number(h.target) || 5, 1, 7);
+const hLen = h => Number(h.length) || 66;
+function hWeek(h, ws = weekStart()) {
+  const log = new Set(h.log || []), jk = new Set(h.jokers || []), t = todayKey();
+  return [...Array(7)].map((_, i) => { const k = addDays(ws, i); return log.has(k) ? 'done' : jk.has(k) ? 'joker' : k > t ? 'future' : k === t ? 'today' : 'miss'; });
+}
+const hCount = (h, ws = weekStart()) => hWeek(h, ws).filter(x => x === 'done' || x === 'joker').length;
+function hWeekStreak(h) {
+  let n = 0, ws = weekStart();
+  if (hCount(h, ws) >= hTarget(h)) n++;
+  ws = addDays(ws, -7);
+  const first = h.created || (h.log || [])[0] || todayKey();
+  while (ws >= weekStart(first) && hCount(h, ws) >= hTarget(h)) { n++; ws = addDays(ws, -7); }
+  return n;
+}
+const jokersLeft = h => 2 - (h.jokers || []).filter(k => monthKey(k) === monthKey()).length;
+function canJoker(h) {
+  const y = addDays(todayKey(), -1), first = h.created || (h.log || [])[0];
+  return first && first <= y && !(h.log || []).includes(y) && !(h.jokers || []).includes(y) && jokersLeft(h) > 0;
+}
+// uyku düzenliliği
+function sleepStats() {
+  const rows = weekKeys().map(k => [k, histFor(k)]).filter(([, h]) => h && h.bt && h.wt);
+  if (rows.length < 3) return null;
+  const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const sd = a => { const m = avg(a); return Math.sqrt(avg(a.map(x => (x - m) ** 2))); };
+  const score = clamp(Math.round(100 - (sd(rows.map(r => r[1].bt)) + sd(rows.map(r => r[1].wt))) / 2 * 0.8), 0, 100);
+  const isWe = k => [0, 6].includes(fromKey(k).getDay());
+  const we = rows.filter(([k]) => isWe(k)).map(r => r[1].wt), wd = rows.filter(([k]) => !isWe(k)).map(r => r[1].wt);
+  return { score, shift: we.length && wd.length ? Math.round(avg(we) - avg(wd)) : null, n: rows.length };
+}
+// tahmin ve gerçekleşen
+function estRatio() {
+  let es = 0, ac = 0;
+  for (let i = 0; i < 30; i++) { const h = histFor(addDays(todayKey(), -i)); if (h?.es) { es += h.es; ac += h.ac; } }
+  return es >= 4 ? ac / es : null;
+}
+// mola türüne göre odak
+function breakSummary() {
+  const o = {};
+  for (let i = 0; i < 14; i++) { const b = histFor(addDays(todayKey(), -i))?.bq || {}; for (const k in b) { o[k] = o[k] || [0, 0]; o[k][0] += b[k][0]; o[k][1] += b[k][1]; } }
+  return Object.entries(o).filter(([, v]) => v[0] + v[1] >= 2);
+}
+// kendi verinden bulgular (ilişki, neden değil)
+function insights() {
+  const H = {};
+  for (let i = 0; i < 60; i++) { const k = addDays(todayKey(), -i), h = histFor(k); if (h) H[k] = h; }
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const cmp = pairs => { const A = pairs.filter(x => x[0]).map(x => x[1]), B = pairs.filter(x => !x[0]).map(x => x[1]); return A.length >= 3 && B.length >= 3 ? mean(A) - mean(B) : null; };
+  const n1 = v => Math.abs(v).toFixed(1).replace('.', ',');
+  const out = [];
+  const bts = Object.values(H).map(h => h.bt).filter(Boolean).sort((a, b) => a - b);
+  if (bts.length >= 6) {
+    const med = bts[Math.floor(bts.length / 2)];
+    const d = cmp(Object.values(H).filter(h => h.bt).map(h => [h.bt <= med, h.f || 0]));
+    if (d !== null && Math.abs(d) >= 15) out.push(`${fmtMin(med)} ya da daha erken yattığın gecelerin ertesinde ortalama ${dur(Math.round(Math.abs(d)))} ${d > 0 ? 'daha fazla' : 'daha az'} odaklandın.`);
+  }
+  { const d = cmp(Object.values(H).filter(h => h.s).map(h => [h.s >= 7, h.f || 0])); if (d !== null && Math.abs(d) >= 15) out.push(`7 saat ve üzeri uyuduğun günlerde ortalama ${dur(Math.round(Math.abs(d)))} ${d > 0 ? 'daha fazla' : 'daha az'} odaklandın.`); }
+  { const d = cmp(Object.values(H).filter(h => h.m).map(h => [(h.t?.spor || 0) > 0, h.m])); if (d !== null && Math.abs(d) >= 0.3) out.push(`Spor yaptığın günlerde ruh halin ortalama ${n1(d)} puan ${d > 0 ? 'daha yüksek' : 'daha düşük'}.`); }
+  { const d = cmp(Object.entries(H).map(([k, h]) => { const n = H[addDays(k, 1)]; return n && n.e ? [(h.t?.telefon || 0) > 60, n.e] : null; }).filter(Boolean)); if (d !== null && Math.abs(d) >= 0.3) out.push(`Telefon ve sosyal medyanın 1 saati geçtiği günlerin ertesinde enerjin ortalama ${n1(d)} puan ${d > 0 ? 'daha yüksek' : 'daha düşük'}.`); }
+  { const d = cmp(Object.values(H).filter(h => h.m).map(h => [(h.w || 0) >= (Number(S.profile.waterGoal) || 8), h.m])); if (d !== null && Math.abs(d) >= 0.3) out.push(`Su hedefini tutturduğun günlerde ruh halin ortalama ${n1(d)} puan ${d > 0 ? 'daha yüksek' : 'daha düşük'}.`); }
+  return out;
+}
+// bugün bitirdiklerin
+function doneItems(d = S.day) {
+  const items = [];
+  [...d.tasks].filter(t => t.done).sort((a, b) => (b.mit ? 1 : 0) - (a.mit ? 1 : 0)).forEach(t => items.push({ l: t.title, k: t.mit ? 'Önemli iş' : 'Görev' }));
+  if (d.focus.length) items.push({ l: `${d.focus.length} pomodoro · ${dur(focusMin(d))}`, k: 'Odak' });
+  S.habits.filter(h => (h.log || []).includes(S.date)).forEach(h => items.push({ l: h.name, k: 'Alışkanlık' }));
+  return items;
+}
+// kendi ödüllerin
+function rewardProgress(r) {
+  if (r.kind === 'pomo') {
+    const ks = new Set(Object.keys(S.history).filter(k => k >= r.from)); if (S.date >= r.from) ks.add(S.date);
+    return [...ks].reduce((a, k) => a + ((histFor(k) || {}).p || 0), 0);
+  }
+  const h = S.habits.find(x => x.id === r.habit); return h ? (h.log || []).filter(k => k >= r.from).length : 0;
+}
+const warned = {};
 
 // ================= Claude (koç) =================
 
@@ -576,12 +702,18 @@ Hedefleri: ${p.goals || 'belirtilmedi'}
 Bunları neden istiyor: ${p.why || 'belirtilmedi'}
 Beden: ${p.heightCm ? p.heightCm + ' cm, ' : ''}${p.weightKg ? p.weightKg + ' kg' : ''}${p.targetKg ? ', hedef ' + p.targetKg + ' kg' : ''}; amaç: ${GOALTYPE[p.goalType] || ''}; kalori hedefi ${p.kcalGoal} kcal, su hedefi ${p.waterGoal} bardak
 Pomodoro tarzı: ${POMO[p.pomoMode]?.l || 'Klasik'}
-Alışkanlıkları: ${S.habits.map(h => `"${h.cue} → ${h.name}" (seri ${streak(h)} gün)`).join('; ') || 'yok'}`;
+Alışkanlıkları: ${S.habits.map(h => `"${h.cue} → ${h.name}"${h.bundle ? ' (ödülü: ' + h.bundle + ')' : ''} (bu hafta ${hCount(h)}/${hTarget(h)} gün, ${hWeekStreak(h)} hafta üst üste hedefte, ${h.comebacks || 0} kez geri döndü)`).join('; ') || 'yok'}
+Bu haftanın WOOP hedefi: ${(w => w && !w.skipped ? `dilek: ${w.wish}; sonuç: ${w.outcome}; engel: ${w.obstacle}; plan: eğer ${w.obstacle} olursa ${w.plan}` : 'yok')(p.woop?.[weekStart()])}
+Bu ayın hedefi: ${(p.monthGoal?.[monthKey()] || '').replace(/^-$/, '') || 'yok'}
+Son kahve saati (yatıştan 6 saat önce): ${coffeeCut()}
+Uyku düzenliliği: ${(x => x ? `${x.score}/100${x.shift ? `, hafta sonu kalkış kayması ${x.shift} dk` : ''}` : 'yeterli veri yok')(sleepStats())}
+Tahmin isabeti: ${(r => r ? `görev tahminleri ortalama x${r.toFixed(2)} (1'den büyükse iyimser)` : 'yeterli veri yok')(estRatio())}
+Kişisel bulgular (ilişki, kesin neden değil): ${insights().join(' ') || 'henüz yeterli veri yok'}`;
 }
 function dayText() {
   const p = S.profile, d = S.day;
-  const tasks = sortedTasks(d).map(t => `${t.time || '--:--'} ${t.title}${t.mit ? ' [önemli]' : ''}${t.done ? ' (bitti)' : ''}${t.pomos ? ` (${t.pomos} pomodoro)` : ''}`).join('\n') || '(plan boş)';
-  const ci = d.checkin ? `Sabah değerlendirmesi: ${d.checkin.sleepH} saat uyku, enerji ${d.checkin.energy}/5 (${ENERGY[d.checkin.energy - 1]}), ruh hali ${d.checkin.mood}/5 (${MOOD[d.checkin.mood - 1]})${d.checkin.intention ? ', niyeti: ' + d.checkin.intention : ''}` : 'Sabah değerlendirmesi yapılmadı.';
+  const tasks = sortedTasks(d).map(t => `${t.time || '--:--'} ${t.title}${t.mit ? ' [önemli]' : ''}${t.urgent ? ' [acil]' : ''}${t.goal ? ` (hedefe katkı: ${t.goal})` : ''}${t.done ? ' (bitti)' : t.carried ? ' (yarına taşındı)' : ''}${t.pomos || t.est ? ` (${t.pomos || 0}/${t.est || '?'} pomodoro)` : ''}`).join('\n') || '(plan boş)';
+  const ci = d.checkin ? `Sabah değerlendirmesi: ${d.checkin.bed ? `${d.checkin.bed}'de yattı, ${d.checkin.wakeT}'de kalktı, ` : ''}${d.checkin.sleepH} saat uyku, enerji ${d.checkin.energy}/5 (${ENERGY[d.checkin.energy - 1]}), ruh hali ${d.checkin.mood}/5 (${MOOD[d.checkin.mood - 1]})${d.checkin.intention ? ', niyeti: ' + d.checkin.intention : ''}` : 'Sabah değerlendirmesi yapılmadı.';
   const hDone = S.habits.filter(h => (h.log || []).includes(S.date)).map(h => h.name);
   return `TARİH: ${fmtLong(S.date)}${S.date === todayKey() ? ', şu an saat ' + nowHM() : ''}
 ${ci}
@@ -592,7 +724,7 @@ Zaman kullanımı: ${Object.entries(timeByCat(d)).sort((a, b) => b[1] - a[1]).ma
 Beslenme: ${sumKcal(d)} / ${p.kcalGoal} kcal (${d.meals.map(m => `${m.meal}: ${m.name} ${m.kcal}`).join('; ') || 'kayıt yok'})
 Su: ${d.water}/${p.waterGoal} bardak
 Bugün yapılan alışkanlıklar: ${hDone.join(', ') || 'henüz yok'}
-${d.review ? `Akşam değerlendirmesi: iyi giden: ${d.review.wins}; minnettar: ${d.review.grat}; yarın farklı: ${d.review.improve}` : ''}`;
+${d.review ? `Günü kapattı: iyi giden: ${d.review.wins}; öğrendiği: ${d.review.learned || '-'}; yarının en önemli işi: ${d.review.mit || '-'}` : ''}`;
 }
 function weekText() {
   return 'SON 7 GÜN\n' + weekKeys().map(k => {
@@ -600,7 +732,7 @@ function weekText() {
     return h ? `${fmtShortDay(k)} ${k}: uyku ${h.s || '-'} sa, enerji ${h.e || '-'}/5, ruh hali ${h.m || '-'}/5, odak ${h.f} dk, görev ${h.td}/${h.tt}, ${h.k} kcal, su ${h.w}${h.t && Object.keys(h.t).length ? ', zaman: ' + Object.entries(h.t).map(([c, m]) => catOf(c).l + ' ' + dur(m)).join(', ') : ''}` : `${fmtShortDay(k)} ${k}: kayıt yok`;
   }).join('\n');
 }
-const coachIntro = () => `Sen ${S.profile.name || 'kullanıcı'} için kişisel yaşam koçusun ve onu tanıyorsun. Tonun: ${(TONES[S.profile.tone] || TONES.nazik)[1]}. Türkçe ve ona adıyla hitap ederek yaz. Önerilerin onun kronotipine, enerjisine, zorlandığı alanlara ve "neden"ine dayansın; genel geçer tavsiye verme, verideki somut şeylere değin. En fazla 6 kısa madde kullan, her madde "- " ile başlasın. Tıbbi teşhis koyma; sağlıkla ilgili ciddi bir durumda uzmana yönlendir.`;
+const coachIntro = () => `Sen ${S.profile.name || 'kullanıcı'} için kişisel yaşam koçusun ve onu tanıyorsun. Tonun: ${(TONES[S.profile.tone] || TONES.nazik)[1]}. Türkçe ve ona adıyla hitap ederek yaz. Önerilerin onun kronotipine, enerjisine, zorlandığı alanlara ve "neden"ine dayansın; genel geçer tavsiye verme, verideki somut şeylere değin. En fazla 6 kısa madde kullan, her madde "- " ile başlasın. Tıbbi teşhis koyma; sağlıkla ilgili ciddi bir durumda uzmana yönlendir. Öz-şefkat kuralı: kötü geçen günlerde (düşük ruh hali veya enerji, kaçırılan alışkanlık, bitmeyen işler) asla suçlama; önce durumu normalleştir ("böyle günler olur"), sonra 2 dakikalık en küçük adımı öner. "İraden tükendi" gibi ifadeler kullanma; yorgunluk ve enerji üzerinden konuş. Kaçırmaktan çok geri dönmeyi öv. Kişisel bulgulardan söz ederken bunların ilişki olduğunu, kesin neden olmadığını belirt.`;
 
 let coachCtl = null;
 async function askCoach(question) {
@@ -625,7 +757,7 @@ async function weeklyReview() {
   if (!sample) return;
   S.weekly = { text: '', busy: true, err: '' }; render();
   try {
-    const { text } = await sample(`${coachIntro()}\n\nSon 7 gününe bak ve haftalık değerlendirme yap: verideki 2-3 örüntü (ör. uyku ile enerji, odak süresi ile ruh hali arasındaki ilişki), bir kazanım, ve gelecek hafta deneyeceği 2 küçük, ölçülebilir deney. Veri azsa bunu söyle ve kayıt tutmanın nasıl yardımcı olacağını açıkla.\n\n${profileText()}\n\n${weekText()}`, {
+    const { text } = await sample(`${coachIntro()}\n\nSon 7 gününe bak ve haftalık değerlendirme yap: verideki 2-3 örüntü (ör. uyku ile enerji, odak süresi ile ruh hali arasındaki ilişki), bir kazanım, ve "kişisel bulgular"a dayanarak gelecek hafta deneyeceği tek bir mini deney (ör. "bu hafta kahveyi 15:00'te kes, uykuna bakalım"). WOOP hedefi varsa ona ne kadar yaklaştığını değerlendir. Veri azsa bunu söyle ve kayıt tutmanın nasıl yardımcı olacağını açıkla.\n\n${profileText()}\n\n${weekText()}`, {
       onText: ({ text }) => { S.weekly.text = text; const o = $('#weekly-out'); if (o) o.innerHTML = md(text); },
     });
     S.weekly = { text, busy: false, err: '' };
@@ -637,7 +769,7 @@ async function suggestPlan() {
   if (!sample) return;
   S.planBusy = true; S.planSugg = null; render();
   try {
-    const res = await sample.json(`Sen bu kişinin planlama koçusun. ${fmtLong(S.date)} gününü planla. Kurallar: mevcut görevleri tekrarlama ama saati olmayan önemli işlere saat vererek onları da ekle (aynı başlıkla); zihinsel olarak zor işleri kronotipinin zirve saatlerine, rutin işleri düşüş saatlerine koy; sabah enerjisi düşükse ilk bloğu hafif tut; öğün, mola ve hareket ekle; uyanma-uyku saatleri dışına taşma. ${S.date === todayKey() ? 'Şu andan önceki saatlere görev koyma.' : ''} Her odak işi için kaç pomodoro süreceğini "p" ile tahmin et (pomodoro tarzı: ${POMO[S.profile.pomoMode]?.d || '25/5'}).
+    const res = await sample.json(`Sen bu kişinin planlama koçusun. ${fmtLong(S.date)} gününü planla. Kurallar: mevcut görevleri tekrarlama ama saati olmayan önemli işlere saat vererek onları da ekle (aynı başlıkla); zirvenin ilk bloğunu yalnızca [önemli] işlere ayır (acil ama önemsiz işleri oraya koyma); zihinsel olarak zor işleri kronotipinin zirve saatlerine, rutin işleri düşüş saatlerine koy; günde 3 kısa "Mesaj ve e-posta" bloğu ekle (ör. 10:00, 13:30, 17:00); haftanın WOOP hedefi varsa ona bir blok ayır; kişinin geçmiş tahminleri iyimserse pomodoro tahminlerini buna göre artır; sabah enerjisi düşükse ilk bloğu hafif tut; öğün, mola ve hareket ekle; uyanma-uyku saatleri dışına taşma. ${S.date === todayKey() ? 'Şu andan önceki saatlere görev koyma.' : ''} Her odak işi için kaç pomodoro süreceğini "p" ile tahmin et (pomodoro tarzı: ${POMO[S.profile.pomoMode]?.d || '25/5'}).
 Yalnızca JSON dizisi döndür, 4-9 öğe: [{"time":"HH:MM","title":"kısa Türkçe başlık","p":sayı veya 0,"why":"neden bu saat, en fazla 8 kelime"}]
 
 ${profileText()}
@@ -732,7 +864,7 @@ function startFocus() {
   unlockAudio();
   const T = S.timer, M = modeOf(T), now = Date.now();
   const taskId = $('#tm-task')?.value ?? T.taskId;
-  S.timer = { ...T, phase: 'focus', startAt: now, endAt: M.focus ? now + M.focus * 60000 : null, total: M.focus * 60000, paused: false, left: 0, taskId };
+  S.timer = { ...T, phase: 'focus', startAt: now, endAt: M.focus ? now + M.focus * 60000 : null, total: M.focus * 60000, paused: false, left: 0, taskId: M.nap ? '' : taskId, after: T.brk || '', brk: '' };
   saveTimer(); keepAwake(true); render();
 }
 function pauseTimer() {
@@ -745,6 +877,7 @@ function pauseTimer() {
 }
 function finishFocus() {
   const T = S.timer, M = modeOf(T), endAt = T.endAt || Date.now();
+  if (M.nap) { S.timer = { ...idleTimer(), mode: S.profile.pomoMode || 'klasik' }; saveTimer(); keepAwake(false); chime('break'); toast('Uyanma zamanı! Biraz su iç, ışığa çık.'); render(); return; }
   const mins = T.mode === 'esnek' ? Math.round((T.paused ? T.left : Date.now() - T.startAt) / 60000) : M.focus;
   if (mins < 1) { S.timer = { ...idleTimer(), mode: T.mode, cycle: T.cycle, taskId: T.taskId }; saveTimer(); render(); toast('1 dakikadan kısa odaklar sayılmaz.'); return; }
   const cycle = (T.cycle || 0) + 1, long = cycle % M.every === 0;
@@ -754,7 +887,7 @@ function finishFocus() {
   S.timer = { ...T, phase: 'break', kind: long ? 'long' : 'short', cycle, startAt: bStart, endAt: bStart + brk * 60000, total: brk * 60000, paused: false, left: 0 };
   saveTimer(); chime('focus');
   changeDay(keyOf(new Date(endAt)), d => {
-    d.focus.push({ at, mins, taskId });
+    d.focus.push({ at, mins, taskId, after: T.after || '' });
     const t = d.tasks.find(x => x.id === taskId); if (t) t.pomos = (t.pomos || 0) + 1;
   }).catch(() => toast('Odak kaydedilemedi.'));
   toast(`${cycle}. pomodoro tamam. ${brk} dakika mola!`);
@@ -762,14 +895,25 @@ function finishFocus() {
 }
 function endBreak(skipped) {
   const T = S.timer;
-  S.timer = { ...idleTimer(), mode: T.mode, cycle: T.kind === 'long' ? 0 : T.cycle, taskId: T.taskId };
+  S.timer = { ...idleTimer(), mode: T.mode, cycle: T.kind === 'long' ? 0 : T.cycle, taskId: T.taskId, brk: T.brk || '' };
   saveTimer(); keepAwake(false);
   if (!skipped) { chime('break'); toast('Mola bitti. Hazır olduğunda devam et.'); }
   render();
 }
-function cancelFocus() { const T = S.timer; S.timer = { ...idleTimer(), mode: T.mode, cycle: T.cycle, taskId: T.taskId }; saveTimer(); keepAwake(false); render(); }
+function cancelFocus() {
+  const T = S.timer;
+  if (!modeOf(T).nap && Date.now() - T.startAt > 60000) changeDay(todayKey(), d => { d.cancels = d.cancels || []; d.cancels.push({ at: Date.now(), after: T.after || '' }); }).catch(() => {});
+  S.timer = { ...idleTimer(), mode: T.mode, cycle: T.cycle, taskId: T.taskId }; saveTimer(); keepAwake(false); render(); }
 function tick() {
-  if (S.track) { const v = hms(Date.now() - S.track.startAt); const a = $('#tr-time'); if (a) a.textContent = v; const b = $('#tr-time2'); if (b) b.textContent = v; }
+  if (S.track) {
+    const v = hms(Date.now() - S.track.startAt); const a = $('#tr-time'); if (a) a.textContent = v; const b = $('#tr-time2'); if (b) b.textContent = v;
+    const c = catOf(S.track.cat);
+    if (c.max && S.date === todayKey()) {
+      const used = (timeByCat(S.day)[c.k] || 0) + Math.round((Date.now() - S.track.startAt) / 60000), wk = S.date + c.k;
+      if (used >= c.max && warned[wk] !== 2) { warned[wk] = 2; toast(`${c.l}: günlük sınırını (${dur(c.max)}) geçtin.`); }
+      else if (used >= c.max * 0.8 && used < c.max && !warned[wk]) { warned[wk] = 1; toast(`${c.l}: sınırının %80’ine geldin (${dur(used)} / ${dur(c.max)}).`); }
+    }
+  }
   const T = S.timer, mini = $('#mini');
   if (!T || T.phase === 'idle') {
     if (S.track && S.tab !== 'odak') { const c = catOf(S.track.cat); mini.hidden = false; mini.className = 'mini'; mini.dataset.z = 'takip'; mini.innerHTML = `<span class="dot" style="background:${c.c}"></span><b>${hms(Date.now() - S.track.startAt)}</b><span>${esc(c.l)}</span>`; }
@@ -809,9 +953,9 @@ function timeline() {
   const awake = left > 0 && left <= b - a;
   return `
   <section class="tl" aria-label="Günün çizgisi">
-    <div class="tl-track"><span class="tl-past" style="width:${awake ? now : 100}%"></span>${band(ch.dip, 'tl-dip')}${band(ch.peak, 'tl-peak')}${dots}${awake ? `<span class="tl-now" style="left:${now}%"></span>` : ''}</div>
+    <div class="tl-track"><span class="tl-past" style="width:${awake ? now : 100}%"></span>${band(ch.dip, 'tl-dip')}${band(ch.peak, 'tl-peak')}<span class="tl-cof" style="left:${pos(coffeeCut())}%" title="Son kahve"></span>${dots}${awake ? `<span class="tl-now" style="left:${now}%"></span>` : ''}</div>
     <div class="tl-legend"><span class="num">${esc(p.wake)}</span><span class="key"><i style="background:var(--amber)"></i>Zirve ${ch.peak.join('–')}</span><span class="num">${esc(p.sleep)}</span></div>
-    <p class="small muted">${awake ? `Uykuya ${Math.floor(left / 60)} sa ${left % 60} dk var. ` : ''}${ch.hint}</p>
+    <p class="small muted">${awake ? `Uykuya ${Math.floor(left / 60)} sa ${left % 60} dk var. ` : ''}${ch.hint} Son kahve: ${coffeeCut()} (ince çizgi).</p>
   </section>`;
 }
 function checkinCard() {
@@ -821,7 +965,7 @@ function checkinCard() {
   return `
   <form class="card" data-form="checkin">
     <div><p class="eyebrow">Sabah değerlendirmesi · 1 dakika</p><h2>Bugün nasılsın?</h2></div>
-    <label class="field">Kaç saat uyudun?<input id="ci-sleep" type="number" inputmode="decimal" step="0.5" min="0" max="16" value="${sleepDefault()}"></label>
+    <div class="two"><label class="field">Dün kaçta yattın?<input id="ci-bed" type="time" value="${esc(S.profile.sleep)}"></label><label class="field">Bugün kaçta kalktın?<input id="ci-wake" type="time" value="${esc(S.profile.wake)}"></label></div>
     <div class="stack" style="gap:6px"><h3>Enerjin</h3>${seg('energy', ENERGY)}</div>
     <div class="stack" style="gap:6px"><h3>Ruh halin</h3>${seg('mood', MOOD)}</div>
     <div class="stack" style="gap:8px"><h3>Bugünün en önemli 3 işi</h3>
@@ -831,13 +975,64 @@ function checkinCard() {
   </form>`;
 }
 function reviewCard() {
+  const open = sortedTasks(S.day).filter(t => !t.done && !t.carried);
   return `
   <form class="card evening" data-form="review">
-    <div><p class="eyebrow">Akşam değerlendirmesi</p><h2>Günü kapatalım</h2></div>
+    <div><p class="eyebrow">Günü kapatma · 5 dakika</p><h2>Günü kapatalım</h2></div>
+    ${open.length ? `<div class="stack" style="gap:8px"><h3>Yarım kalanlar</h3><p class="small muted">Bitmeyen işler, plan yapılana kadar zihnini meşgul eder. Yarın ne zaman yapacağını seç; bu yük kalksın.</p>
+      ${open.map(t => `<div class="row"><input type="checkbox" id="rv-c-${t.id}" checked style="width:22px;min-height:22px;flex:none" aria-label="Yarına taşı"><label class="grow small" for="rv-c-${t.id}" style="overflow-wrap:anywhere">${esc(t.title)}</label><input type="time" id="rv-t-${t.id}" value="${esc(t.time || '')}" style="width:auto;min-width:96px" aria-label="Yarın saat"></div>`).join('')}</div>` : ''}
     <label class="field">Bugün ne iyi gitti?<textarea id="rv-wins" rows="2"></textarea></label>
-    <label class="field">Minnettar olduğun 3 şey<textarea id="rv-grat" rows="2" placeholder="Küçük şeyler de sayılır"></textarea></label>
-    <label class="field">Yarın neyi farklı yaparsın?<textarea id="rv-imp" rows="2"></textarea></label>
+    <label class="field">Bugün ne öğrendim? (tek cümle)<input id="rv-learn" autocomplete="off"></label>
+    <label class="field">Yarının en önemli işi<input id="rv-mit" autocomplete="off" placeholder="Zirve saatine (${peakStart()}) yerleşir"></label>
+    <label class="field">Minnettar olduğun şeyler (isteğe bağlı)<textarea id="rv-grat" rows="2" placeholder="Küçük şeyler de sayılır"></textarea></label>
     <button class="btn primary">Günü kapat</button>
+  </form>`;
+}
+function closedCard() {
+  const r = S.day.review, top = doneItems().slice(0, 3);
+  return `
+  <section class="card evening">
+    <div><p class="eyebrow">Gün kapandı</p><h2>Bugünlük bu kadar</h2></div>
+    ${top.length ? `<h3>Günün en iyi 3’ü</h3><ul class="list">${top.map(x => `<li class="item"><span class="okmark">${ICON.check}</span><span class="title"><span>${esc(x.l)}</span><span class="sub">${x.k}</span></span></li>`).join('')}</ul>` : ''}
+    ${r.learned ? `<p class="small"><strong>Öğrendiğin:</strong> ${esc(r.learned)}</p>` : ''}
+    ${r.mit ? `<p class="small"><strong>Yarının en önemli işi:</strong> ${esc(r.mit)} · ${peakStart()}</p>` : ''}
+    ${r.carried ? `<p class="small muted">${r.carried} yarım iş yarına taşındı.</p>` : ''}
+    <p class="small muted">Artık işi zihninden çıkarma zamanı. Akşamı işten kopuk geçirmek, yarın daha dinç başlamanı sağlar.</p>
+  </section>`;
+}
+function woopCard() {
+  const monday = fromKey(todayKey()).getDay() === 1;
+  return `
+  <form class="card" data-form="woop">
+    <div><p class="eyebrow">${monday ? 'Yeni hafta, yeni sayfa' : 'Bu haftanın hedefi'} · WOOP</p><h2>Bu hafta neyi başarmak istiyorsun?</h2></div>
+    ${lastWeekLine()}
+    <label class="field">Dilek: bu haftaki hedefin<input id="wp-w" autocomplete="off" placeholder="Örn. raporu cuma bitirmek"></label>
+    <label class="field">Sonuç: başarırsan en güzel sonucu ne olur?<input id="wp-o" autocomplete="off"></label>
+    <label class="field">Engel: içindeki en büyük engel ne?<input id="wp-b" autocomplete="off" placeholder="Örn. akşam yorgunken telefona dalmak"></label>
+    <label class="field">Plan: Eğer bu engel çıkarsa, o zaman…<input id="wp-p" autocomplete="off" placeholder="Örn. telefonu başka odaya koyup 1 pomodoro yaparım"></label>
+    <div class="row"><button class="btn primary grow">Haftayı başlat</button><button type="button" class="btn ghost" data-act="woop-skip">Bu hafta geç</button></div>
+  </form>`;
+}
+function lastWeekLine() {
+  const ws = addDays(weekStart(), -7), hs = [...Array(7)].map((_, i) => S.history[addDays(ws, i)]).filter(Boolean);
+  if (!hs.length) return '';
+  const f = hs.reduce((a, h) => a + (h.f || 0), 0), td = hs.reduce((a, h) => a + (h.td || 0), 0), ms = hs.map(h => h.m).filter(Boolean);
+  const m = ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : 0;
+  const hp = S.habits.length ? Math.round(S.habits.filter(h => hCount(h, ws) >= hTarget(h)).length / S.habits.length * 100) : null;
+  const bad = (m && m < 3) || (hp !== null && hp < 50);
+  return `<p class="banner">Geçen hafta: ${dur(f)} odak, ${td} iş bitti${m ? `, ruh hali ort. ${m.toFixed(1).replace('.', ',')}` : ''}${hp !== null ? `, alışkanlık hedeflerinin %${hp}’i tuttu` : ''}.${bad ? ' Zor bir haftaydı; geride kaldı. Bu hafta temiz bir sayfa.' : ''}</p>`;
+}
+function monthCard() {
+  const mk = monthKey(), prev = monthKey(addDays(mk + '-01', -1));
+  const hs = Object.entries(S.history).filter(([k]) => monthKey(k) === prev).map(([, h]) => h);
+  const f = hs.reduce((a, h) => a + (h.f || 0), 0), td = hs.reduce((a, h) => a + (h.td || 0), 0);
+  return `
+  <form class="card" data-form="month">
+    <div><p class="eyebrow">Yeni ay, yeni sayfa</p><h2>${esc(fromKey(mk + '-01').toLocaleDateString('tr-TR', { month: 'long' }))} için tek bir hedef</h2></div>
+    ${hs.length ? `<p class="banner">Geçen ay: ${dur(f)} odak, ${td} iş bitti, ${hs.length} gün kayıt tuttun.</p>` : ''}
+    <p class="small muted">Yeni dönemlerin başı, yeni bir başlangıç için en elverişli anlardır. Tek bir hedef seç.</p>
+    <input id="mo-goal" autocomplete="off" placeholder="Örn. her gün 10 sayfa okumak">
+    <div class="row"><button class="btn primary grow">Kaydet</button><button type="button" class="btn ghost" data-act="month-skip">Geç</button></div>
   </form>`;
 }
 function habitsCard(compact) {
@@ -846,11 +1041,13 @@ function habitsCard(compact) {
   return `
   <section class="card">
     <div class="row"><h2 class="grow">Alışkanlıklar</h2><button class="btn ghost" data-go="habits">Düzenle</button></div>
-    <ul class="list">${hs.map(h => { const on = (h.log || []).includes(S.date), s = streak(h); return `
+    <ul class="list">${hs.map(h => { const on = (h.log || []).includes(S.date), c = hCount(h, weekStart(S.date)), tg = hTarget(h), left = tg - c, ws = hWeekStreak(h); return `
       <li class="item${on ? ' done' : ''}">
         <button class="check" data-act="habit" data-id="${h.id}" aria-label="${on ? 'Geri al' : 'Yaptım'}">${ICON.check}</button>
-        <span class="title"><span>${esc(h.name)}</span><span class="sub">${esc(h.cue)}</span></span>
-        ${s ? `<span class="streak num">${s} gün</span>` : ''}
+        <span class="title"><span>${esc(h.name)}</span><span class="sub">${esc(h.cue)}${h.bundle ? ' · ödülü: ' + esc(h.bundle) : ''}${ws > 1 ? ` · ${ws} hafta üst üste` : ''}</span>
+          ${S.date === todayKey() && canJoker(h) ? `<button class="btn ghost small" style="min-height:32px;padding:0;align-self:flex-start" data-act="joker" data-id="${h.id}">Dün için joker kullan (${jokersLeft(h)} hakkın var)</button>` : ''}</span>
+        <span class="hright"><span class="wdots" aria-label="Bu hafta">${hWeek(h, weekStart(S.date)).map(x => `<i class="${x}"></i>`).join('')}</span>
+          <span class="wkc ${left <= 0 ? 'ok' : left <= 2 ? 'near' : ''}">${left <= 0 ? 'Hafta tamam' : left <= 2 ? `Son ${left}!` : `${c}/${tg}`}</span></span>
       </li>`; }).join('')}</ul>
   </section>`;
 }
@@ -863,13 +1060,20 @@ function viewToday() {
     `<button class="drop${i < d.water ? ' on' : ''}" data-act="water" data-i="${i}" aria-label="${i + 1}. bardak"></button>`).join('');
   const showCheckin = isToday && S.dayLoaded && !d.checkin;
   const showReview = isToday && S.dayLoaded && !d.review && hour >= 18;
+  const wk = weekStart(), woop = p.woop?.[wk], showWoop = isToday && S.profileLoaded && !woop && !(showCheckin && hour < 17);
+  const showMonth = isToday && S.profileLoaded && new Date().getDate() <= 5 && !(p.monthGoal && monthKey() in p.monthGoal) && !(showCheckin && hour < 17);
+  const ks = kcalStatus(kcal, p), wins = doneItems();
   return `
   <div class="stack">
     ${header(`${greeting()}${p.name ? ', ' + esc(p.name) : ''}`, esc(fmtLong(S.date)))}
     ${p.why ? `<p class="why">${esc(p.why)}</p>` : ''}
     ${timeline()}
     ${showReview ? reviewCard() : ''}
+    ${isToday && d.review ? closedCard() : ''}
     ${showCheckin && hour < 17 ? checkinCard() : ''}
+    ${showWoop ? woopCard() : ''}
+    ${showMonth ? monthCard() : ''}
+    ${woop && !woop.skipped ? `<p class="banner"><strong>Haftanın hedefi:</strong> ${esc(woop.wish)}. Eğer ${esc(woop.obstacle)} → ${esc(woop.plan)}</p>` : ''}
     ${d.checkin?.intention ? `<p class="banner">Bugünkü niyetin: <strong>${esc(d.checkin.intention)}</strong></p>` : ''}
     <section class="card next">
       <p class="eyebrow">Sıradaki</p>
@@ -878,18 +1082,18 @@ function viewToday() {
       : `<p class="what">${total ? 'Bugünkü her şeyi bitirdin. Kendine bir teşekkür et.' : 'Planında henüz bir şey yok.'}</p>
         <div class="row"><button class="btn on-accent" data-go="plan">${total ? 'Plana bak' : 'Günü planla'}</button></div>`}
     </section>
+    ${wins.length ? `<section class="stack" style="gap:8px"><h3>Bugün bitirdiklerin</h3><div class="wins">${wins.map(x => `<span class="win">${ICON.check}${esc(x.l)}</span>`).join('')}</div></section>` : ''}
     <div class="stats">
       <button class="stat" data-go="plan"><span class="eyebrow">Görevler</span><span class="big num">${done}/${total}</span><span class="bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></span></button>
       <button class="stat" data-go="odak" data-z="pomo"><span class="eyebrow">Odak</span><span class="big num">${fm} dk</span><span class="small muted num">${d.focus.length} pomodoro</span></button>
-      <button class="stat" data-go="kalori"><span class="eyebrow">Kalori</span><span class="big num">${kcal}</span>
-        <span class="bar amber${kcal > goal ? ' over' : ''}"><i style="width:${Math.min(100, Math.round(kcal / goal * 100))}%"></i></span>
-        <span class="small muted num">${kcal > goal ? `${kcal - goal} kcal fazla` : `${goal - kcal} kcal kaldı`}</span></button>
-      <div class="stat"><span class="eyebrow">Su · ${d.water}/${p.waterGoal}</span><div class="water">${water}</div></div>
+      <button class="stat" data-go="kalori"><span class="eyebrow">Kalori · ${ks.lo}–${ks.hi}</span><span class="big num">${kcal}</span>
+        <span class="bar amber${ks.over ? ' over' : ''}"><i style="width:${Math.min(100, Math.round(kcal / ks.hi * 100))}%"></i></span>
+        <span class="small num" style="color:${ks.col}">${ks.txt}</span></button>
+      <div class="stat"><span class="eyebrow">Su · ${d.water}/${p.waterGoal}${d.water >= (Number(p.waterGoal) || 8) + 2 ? ' · harika' : ''}</span><div class="water">${water}</div></div>
     </div>
     ${trackCard()}
     ${habitsCard(true)}
     ${coachCard()}
-    ${d.review ? `<p class="banner">Günü kapattın. Minnettar olduğun şeyler: ${esc(d.review.grat || '—')}</p>` : ''}
     ${showCheckin && hour >= 17 ? `<button class="btn" data-act="ci-late">Sabah değerlendirmesini şimdi yap</button>` : ''}
     ${S.ci.late ? checkinCard() : ''}
   </div>`;
@@ -922,6 +1126,7 @@ function viewOdak() {
 }
 function viewTrack() {
   const d = S.day, tr = S.track, by = timeByCat(d), total = Object.values(by).reduce((a, b) => a + b, 0);
+  cats().forEach(c => { if ((c.min || c.max) && !(c.k in by)) by[c.k] = 0; });
   const rows = Object.entries(by).sort((a, b) => b[1] - a[1]);
   let untracked = 0;
   if (S.date === todayKey()) { const awake = toMin(nowHM()) - toMin(S.profile.wake); if (awake > 0) untracked = Math.max(0, awake - total - (tr ? Math.round((Date.now() - tr.startAt) / 60000) : 0)); }
@@ -940,8 +1145,8 @@ function viewTrack() {
     </section>
     <section class="card">
       <div class="row"><h2 class="grow">Bugün nereye gitti?</h2><span class="muted num">${dur(total)}</span></div>
-      ${total ? `<div class="stackbar">${rows.map(([k, m]) => `<i style="width:${m / total * 100}%;background:${catOf(k).c}"></i>`).join('')}</div>
-        <ul class="list">${rows.map(([k, m]) => `<li class="item"><span class="cdot" style="background:${catOf(k).c}"></span><span class="title"><span>${esc(catOf(k).l)}</span></span><span class="num">${dur(m)}</span><span class="muted small num" style="width:42px;text-align:right">%${Math.round(m / total * 100)}</span></li>`).join('')}</ul>`
+      ${rows.length ? `<div class="stackbar">${rows.map(([k, m]) => `<i style="width:${m / total * 100}%;background:${catOf(k).c}"></i>`).join('')}</div>
+        <ul class="list">${rows.map(([k, m]) => { const c = catOf(k), lim = c.max || c.min, st = c.max && m > c.max ? 'var(--bad)' : c.min && m >= c.min ? 'var(--good)' : 'var(--muted)'; return `<li class="item"><span class="cdot" style="background:${c.c}"></span><span class="title"><span>${esc(c.l)}</span>${lim ? `<span class="sub" style="color:${st}">${c.min ? 'en az ' + dur(c.min) : ''}${c.min && c.max ? ' · ' : ''}${c.max ? 'en fazla ' + dur(c.max) : ''}${c.max && m > c.max ? ' · sınır aşıldı' : c.min && m >= c.min ? ' · tamam' : ''}</span><span class="bar" style="margin-top:2px"><i style="width:${Math.min(100, m / lim * 100)}%;background:${c.c}"></i></span>` : ''}</span><span class="num">${dur(m)}</span><span class="muted small num" style="width:42px;text-align:right">${total ? '%' + Math.round(m / total * 100) : ''}</span></li>`; }).join('')}</ul>`
       : '<p class="empty">Henüz kayıt yok. Yukarıdan bir etkinliğe dokunarak başla ya da aşağıdan elle ekle.</p>'}
       ${untracked > 30 ? `<p class="small muted">Uyandığından beri ${dur(untracked)} kaydedilmemiş. Geriye dönük elle ekleyebilirsin.</p>` : ''}
       ${d.focus.length ? `<p class="small muted">Ayrıca ${d.focus.length} pomodoro ile ${dur(focusMin(d))} odaklandın.</p>` : ''}
@@ -957,6 +1162,13 @@ function viewTrack() {
     <section class="card"><h2>Son 7 gün</h2>
       ${weekRows.length ? weekRows.map(([k, m]) => `<div class="hbar"><div class="row small"><span class="grow">${esc(catOf(k).l)}</span><span class="num">${dur(m)}</span></div><span class="bar"><i style="width:${m / wmax * 100}%;background:${catOf(k).c}"></i></span></div>`).join('') : '<p class="empty">Kayıt tuttukça haftalık dağılımın burada görünür.</p>'}
     </section>
+    <form class="card" data-form="catgoal">
+      <h3>Kategori hedefleri</h3>
+      <p class="small muted">Aralık koy: alt sınır başarı, üst sınır uyarı. Örn. Spor en az 30 dk, Telefon en fazla 30 dk. Sınırın %80’ine gelince haber veririm.</p>
+      <select id="cg-cat" aria-label="Kategori">${cats().map(c => `<option value="${c.k}">${esc(c.l)}</option>`).join('')}</select>
+      <div class="two"><label class="field">En az (dk/gün)<input id="cg-min" type="number" inputmode="numeric" min="0" value="${cats()[0].min || ''}"></label><label class="field">En fazla (dk/gün)<input id="cg-max" type="number" inputmode="numeric" min="0" value="${cats()[0].max || ''}"></label></div>
+      <button class="btn soft">Hedefi kaydet</button>
+    </form>
     <form class="card" data-form="cat">
       <h3>Kategorilerin</h3>
       <p class="small muted">Silmek için bir kategoriye iki kez dokun.</p>
@@ -974,6 +1186,7 @@ function viewPomo() {
   const byTask = {};
   today.focus.forEach(f => { byTask[f.taskId || ''] = (byTask[f.taskId || ''] || 0) + 1; });
   const tip = BREAK_TIPS[(T.cycle || 0) % BREAK_TIPS.length];
+  const rw = (S.profile.rewards || []).filter(r => !r.done && r.kind === 'pomo')[0], rwLeft = rw ? rw.target - rewardProgress(rw) : 0;
   return `
     <section class="card timer ${phaseCls}">
       <div class="chips" role="group" aria-label="Odak tarzı">${Object.entries(POMO).map(([k, m]) => `<button class="chip" data-act="pomo-mode" data-k="${k}" aria-pressed="${T.mode === k}" ${running ? 'disabled' : ''}>${m.l}</button>`).join('')}</div>
@@ -986,7 +1199,13 @@ function viewPomo() {
         <text id="tm-time" x="140" y="166" text-anchor="middle" font-size="58" font-weight="800" fill="var(--ink)" style="font-variant-numeric:tabular-nums">${v.label}</text>
       </svg>
       <div class="toms-row" aria-label="Set içinde ${inSet}/${every}">${[...Array(every)].map((_, i) => `<i class="${i < inSet ? 'on' : ''}"></i>`).join('')}</div>
-      ${T.phase === 'idle' ? `
+      ${T.phase === 'idle' && M.nap ? `
+        <p class="small muted">Öğleden sonraki enerji düşüşünde 10 dakikalık şekerleme en iyi sonucu veriyor; 30 dakika sersemlik yaratabiliyor.</p>
+        <button class="btn primary big" data-act="tm-start">${ICON.play}Şekerlemeyi başlat</button>`
+      : T.phase === 'focus' && M.nap ? `
+        <p class="small muted">Gözlerini kapat. 10 dakika sonra seni uyandıracağım.</p>
+        <button class="btn danger" data-act="tm-cancel">Vazgeç</button>`
+      : T.phase === 'idle' ? `
         <select id="tm-task" aria-label="Hangi işe odaklanacaksın?">
           <option value="">Görev seçmeden odaklan</option>
           ${open.map(t => `<option value="${t.id}"${t.id === T.taskId ? ' selected' : ''}>${esc((t.time ? t.time + ' · ' : '') + t.title)}</option>`).join('')}
@@ -1000,13 +1219,15 @@ function viewPomo() {
           <button class="btn danger" data-act="tm-cancel" id="tm-cancel">Vazgeç</button>
         </div>`
       : `
-        <p class="small">${esc(tip)}</p>
+        <h3>Molada ne yapıyorsun?</h3>
+        <div class="chips" style="justify-content:center">${Object.entries(BREAKS).map(([k, l]) => `<button class="chip" data-act="brk" data-k="${k}" aria-pressed="${T.brk === k}">${l}</button>`).join('')}</div>
+        <p class="small muted">${T.kind === 'long' || (T.total || 0) >= 600000 ? 'Uzun çalıştın; en az 10 dakika ara ver. Yürüyüş yaratıcılığı da artırıyor.' : esc(tip)} Hangi molanın sende işe yaradığını Haftam’da görürsün.</p>
         <div class="row wrap" style="justify-content:center">
-          <button class="btn soft" data-act="water-plus">+1 bardak su</button>
           <button class="btn" data-act="tm-skip">Molayı geç</button>
         </div>`}
     </section>
-    ${T.phase === 'focus' ? `
+    ${rw ? `<p class="banner">${rwLeft > 0 ? `Ödülüne ${rwLeft} pomodoro kaldı: <strong>${esc(rw.name)}</strong>${rwLeft <= 2 ? ' · Son ' + rwLeft + '!' : ''}` : `Ödülünü hak ettin: <strong>${esc(rw.name)}</strong>. Alışkanlıklar sayfasından “Aldım” de.`}</p>` : ''}
+    ${T.phase === 'focus' && !M.nap ? `
     <form class="card" data-form="thought">
       <h3>Aklına başka bir şey mi geldi?</h3>
       <p class="small muted">Yaz ve odağına dön. "Aklıma gelenler" notuna eklenir, sonra bakarsın.</p>
@@ -1027,8 +1248,11 @@ function viewPlan() {
     ${dateBar()}
     <form class="card" data-form="task">
       <div class="row"><input id="t-time" type="time" aria-label="Saat" style="width:auto"><input id="t-title" class="grow" placeholder="Ne yapacaksın?" autocomplete="off" aria-label="Görev"></div>
-      <div class="row"><label class="row small grow" style="font-weight:600"><input id="t-mit" type="checkbox" style="width:22px;min-height:22px"> Önemli iş</label>
+      <div class="row wrap"><label class="row small" style="font-weight:600"><input id="t-mit" type="checkbox" style="width:22px;min-height:22px"> Önemli</label>
+        <label class="row small" style="font-weight:600"><input id="t-urg" type="checkbox" style="width:22px;min-height:22px"> Acil</label><span class="grow"></span>
         <select id="t-est" aria-label="Tahmini pomodoro" style="width:auto"><option value="0">Pomodoro tahmini yok</option>${[1, 2, 3, 4, 5, 6].map(n => `<option value="${n}">${n} pomodoro</option>`).join('')}</select></div>
+      ${goalsList().length ? `<select id="t-goal" aria-label="Hangi hedefine katkı sağlıyor?"><option value="">Hangi hedefine katkı sağlıyor? (isteğe bağlı)</option>${goalsList().map(g => `<option>${esc(g)}</option>`).join('')}</select>` : ''}
+      <p class="small muted" id="est-hint">${(r => r && r > 1.1 ? `Tahminlerin genelde %${Math.round((r - 1) * 100)} iyimser çıkıyor; seçtiğin tahmini buna göre artıracağım.` : '')(estRatio())}</p>
       <button class="btn primary">${ICON.plus}Plana ekle</button>
     </form>
     <section class="card">
@@ -1036,7 +1260,8 @@ function viewPlan() {
         <li class="item${t.done ? ' done' : ''}">
           <button class="check" data-act="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Geri al' : 'Bitti olarak işaretle'}">${ICON.check}</button>
           <span class="t num">${esc(t.time || '—')}</span>
-          <span class="title"><span>${esc(t.title)}</span>${t.mit ? '<span class="tag">Önemli</span>' : ''}${t.pomos || t.est ? `<span class="toms num">${t.pomos || 0}${t.est ? '/' + t.est : ''} pomodoro</span>` : ''}</span>
+          <span class="title"><span>${esc(t.title)}</span><span class="row" style="gap:4px">${t.mit ? '<span class="tag">Önemli</span>' : ''}${t.urgent ? '<span class="tag urg">Acil</span>' : ''}</span>${t.goal ? `<span class="sub">→ ${esc(t.goal)}</span>` : ''}${t.pomos || t.est ? `<span class="toms num">${t.pomos || 0}${t.est ? '/' + t.est : ''} pomodoro</span>` : ''}${t.carried ? '<span class="sub">Yarına taşındı</span>' : ''}${!t.done && !t.mit && inPeak(t.time) ? '<span class="sub" style="color:var(--amber)">Zirve saatin: burayı önemli bir işe ayırmayı düşün</span>' : ''}</span>
+          ${!t.done && S.ai && (t.est || 0) > 2 ? `<button class="btn ghost" style="padding:0 6px" data-act="split" data-id="${t.id}">Böl</button>` : ''}
           ${!t.done && S.date === todayKey() ? `<button class="play" data-act="focus-task" data-id="${t.id}" aria-label="Bu işe odaklan">${ICON.play}</button>` : ''}
           <button class="del" data-act="task-del" data-id="${t.id}" aria-label="Sil">${ICON.x}</button>
         </li>`).join('')}</ul>` : '<p class="empty">Bu gün için görev yok. Yukarıdan ekle ya da koçtan enerjine göre plan iste.</p>'}
@@ -1050,7 +1275,7 @@ function viewPlan() {
 }
 
 function viewKalori() {
-  const d = S.day, p = S.profile, goal = Number(p.kcalGoal) || 2000, kcal = sumKcal(d);
+  const d = S.day, p = S.profile, goal = Number(p.kcalGoal) || 2000, kcal = sumKcal(d), ks = kcalStatus(kcal, p);
   const groups = MEALS.map(m => {
     const items = d.meals.filter(x => x.meal === m);
     if (!items.length) return '';
@@ -1064,9 +1289,9 @@ function viewKalori() {
     ${header('Beslenme')}
     ${dateBar()}
     <section class="card">
-      <div class="kcal-head"><div><p class="eyebrow">Alınan</p><span class="big num">${kcal}</span> <span class="muted">/ ${goal} kcal</span></div>
-        <p class="num" style="color:${kcal > goal ? 'var(--bad)' : 'var(--good)'};font-weight:600">${kcal > goal ? `${kcal - goal} kcal fazla` : `${goal - kcal} kcal kaldı`}</p></div>
-      <span class="bar amber${kcal > goal ? ' over' : ''}"><i style="width:${Math.min(100, Math.round(kcal / goal * 100))}%"></i></span>
+      <div class="kcal-head"><div><p class="eyebrow">Alınan · hedef aralık ${ks.lo}–${ks.hi}</p><span class="big num">${kcal}</span> <span class="muted">kcal</span></div>
+        <p class="num" style="color:${ks.col};font-weight:600">${ks.txt}</p></div>
+      <span class="bar amber${ks.over ? ' over' : ''}" style="position:relative"><i style="width:${Math.min(100, Math.round(kcal / ks.hi * 100))}%"></i></span>
       <p class="small muted">${kcalFor(p) ? `Hedefin boy, kilo, yaş ve hareketine göre hesaplandı (${GOALTYPE[p.goalType]?.toLocaleLowerCase('tr')}). Bu bir tahmindir; sağlık durumun özelse bir diyetisyene danış.` : 'Boy, kilo ve yaşını Profilinde girersen hedefini sana göre hesaplarım.'}</p>
     </section>
     <form class="card" data-form="meal">
@@ -1083,7 +1308,36 @@ function viewKalori() {
     </form>
     <section class="card">${groups || '<p class="empty">Bu gün için kayıt yok.</p>'}</section>
     <section class="card chart"><h2>Son 7 gün</h2>${weekChart(goal)}</section>
+    ${weightCard()}
   </div>`;
+}
+function weightCard() {
+  const ws = (S.profile.weights || []).slice(-60), last = ws[ws.length - 1];
+  return `
+  <section class="card chart">
+    <div class="row"><h2 class="grow">Kilo</h2>${last ? `<span class="num muted">${String(last.kg).replace('.', ',')} kg</span>` : ''}</div>
+    <form class="row" data-form="weight"><input id="wt-kg" class="grow" type="number" inputmode="decimal" step="0.1" placeholder="Bugünkü kilon (kg)"><button class="btn soft">Kaydet</button></form>
+    ${ws.length >= 2 ? weightChart(ws, Number(S.profile.targetKg) || 0) : '<p class="small muted">Haftada birkaç kez, aynı saatte tartıl. Günlük iniş çıkışlar çoğunlukla sudan kaynaklanır; asıl bakacağın şey 7 günlük ortalama çizgisi.</p>'}
+  </section>`;
+}
+function weightChart(ws, target) {
+  const W = 320, H = 170, L = 34, R = 8, T = 14, B = 24;
+  const ma = ws.map(w => { const from = addDays(w.d, -6), win = ws.filter(x => x.d >= from && x.d <= w.d); return win.reduce((a, x) => a + x.kg, 0) / win.length; });
+  const vals = ws.map(w => w.kg).concat(target ? [target] : []);
+  let lo = Math.min(...vals), hi = Math.max(...vals); if (hi - lo < 2) { hi += 1; lo -= 1; }
+  const t0 = fromKey(ws[0].d).getTime(), t1 = Math.max(fromKey(ws[ws.length - 1].d).getTime(), t0 + 86400000);
+  const x = d => L + (fromKey(d).getTime() - t0) / (t1 - t0) * (W - L - R), y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+  const fmt = v => v.toFixed(1).replace('.', ','), lbl = d => esc(fromKey(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }));
+  const path = ma.map((v, i) => `${i ? 'L' : 'M'}${x(ws[i].d).toFixed(1)},${y(v).toFixed(1)}`).join('');
+  const ch = ma[ma.length - 1] - ma[0];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Kilo eğilimi">
+    ${[hi, lo].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L - 4}" y="${y(v) + 3}" text-anchor="end" font-size="9" fill="var(--muted)">${fmt(v)}</text>`).join('')}
+    ${target ? `<line x1="${L}" x2="${W - R}" y1="${y(target)}" y2="${y(target)}" stroke="var(--accent)" stroke-dasharray="4 4"/><text x="${W - R}" y="${y(target) - 4}" text-anchor="end" font-size="9" fill="var(--accent)">hedef ${fmt(target)}</text>` : ''}
+    ${ws.map(w => `<circle cx="${x(w.d)}" cy="${y(w.kg)}" r="2.5" fill="var(--muted)" opacity=".6"/>`).join('')}
+    <path d="${path}" fill="none" stroke="var(--amber)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <text x="${L}" y="${H - 6}" font-size="9" fill="var(--muted)">${lbl(ws[0].d)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" font-size="9" fill="var(--muted)">${lbl(ws[ws.length - 1].d)}</text>
+  </svg>
+  <p class="small muted">Noktalar tek tek tartılar, çizgi 7 günlük ortalama. Bu dönemde ortalaman ${Math.abs(ch) < 0.05 ? 'sabit kaldı' : `${fmt(Math.abs(ch))} kg ${ch < 0 ? 'azaldı' : 'arttı'}`}.</p>`;
 }
 function weekChart(goal) {
   const keys = weekKeys(S.date), v = Object.fromEntries(keys.map(k => [k, histFor(k)?.k || 0]));
@@ -1141,22 +1395,44 @@ function viewHabits() {
   return `
   <div class="stack">
     <header class="top"><button class="iconbtn" data-go="today" aria-label="Geri">${ICON.left}</button><div class="grow"><h1>Alışkanlıklar</h1></div></header>
-    <p class="muted">Yeni bir alışkanlığı zaten yaptığın bir şeye bağla: "Kahvemi koyunca, 1 dakika plan yaparım." Ne zaman ve nerede yapacağını önceden belirleyenler, yalnızca niyet edenlere göre çok daha sık uyguluyor. Otomatikleşmesi ortalama 66 gün sürer; bir gün kaçırmak seriyi bozmaz, iki gün kaçırmamaya çalış.</p>
+    <p class="muted">Yeni bir alışkanlığı zaten yaptığın bir şeye bağla: "Kahvemi koyunca, 1 dakika plan yaparım." Hedefin günlük değil haftalık: haftada 5 gün gibi. Ayda 2 joker hakkın var. Bir gün kaçırmak hiçbir şeyi bozmaz; asıl önemli olan geri dönmek.</p>
     <form class="card" data-form="habit">
       <label class="field">Şundan sonra… (tetikleyici)<input id="h-cue" placeholder="Örn. Sabah kalkınca" autocomplete="off"></label>
       <label class="field">…şunu yapacağım (küçük tut)<input id="h-name" placeholder="Örn. Bir bardak su iç" autocomplete="off"></label>
+      <div class="two"><label class="field">Haftalık hedef<select id="h-target">${[3, 4, 5, 6, 7].map(n => `<option value="${n}"${n === 5 ? ' selected' : ''}>Haftada ${n} gün</option>`).join('')}</select></label>
+        <label class="field">Zorluk<select id="h-len">${Object.entries(HLEN).map(([k, l]) => `<option value="${k}"${k === '66' ? ' selected' : ''}>${l}</option>`).join('')}</select></label></div>
+      <label class="field">Bunu yaparken kendime izin vereceğim zevk (isteğe bağlı)<input id="h-bundle" placeholder="Örn. sevdiğim podcast'i sadece yürürken dinlerim" autocomplete="off"></label>
       <button class="btn primary">${ICON.plus}Alışkanlık ekle</button>
     </form>
     ${sugg.length ? `<section class="card"><h3>Sana önerilenler</h3><div class="chips">${sugg.map(([k, v]) => `<button class="chip" data-act="habit-sugg" data-k="${k}">${esc(v[1].cue)} → ${esc(v[1].name)}</button>`).join('')}</div></section>` : ''}
     <section class="card">
-      ${S.habits.length ? `<ul class="list">${S.habits.map(h => { const s = streak(h), n = (h.log || []).length; return `
-        <li class="item"><span class="title"><span>${esc(h.name)}</span><span class="sub">${esc(h.cue)} · ${n}/66 gün</span><span class="bar" style="margin-top:4px"><i style="width:${Math.min(100, n / 66 * 100)}%"></i></span></span>
-        ${s ? `<span class="streak num">${s} gün</span>` : ''}
+      ${S.habits.length ? `<ul class="list">${S.habits.map(h => { const n = (h.log || []).length, L = hLen(h), ws = hWeekStreak(h); return `
+        <li class="item"><span class="title"><span>${esc(h.name)}</span><span class="sub">${esc(h.cue)} · haftada ${hTarget(h)} gün · ${n === 0 ? 'kuruldu, ilk adım seni bekliyor' : `${n}/${L} gün`}${h.comebacks ? ` · ${h.comebacks} kez geri döndün` : ''}${h.bundle ? ' · ödülü: ' + esc(h.bundle) : ''}</span>
+          <span class="bar" style="margin-top:4px"><i style="width:${Math.min(100, (n + 1) / (L + 1) * 100)}%"></i></span></span>
+        ${ws ? `<span class="streak num">${ws} hafta</span>` : ''}
         <button class="del" data-act="habit-del" data-id="${h.id}" aria-label="Sil">${ICON.x}</button></li>`; }).join('')}</ul>` : '<p class="empty">Henüz alışkanlık yok.</p>'}
     </section>
+    ${rewardsCard()}
   </div>`;
 }
 
+function rewardsCard() {
+  const rs = (S.profile.rewards || []).filter(r => !r.done);
+  return `
+  <section class="card">
+    <h2>Kendi ödüllerin</h2>
+    <p class="small muted">Ödülü sen seç: dışarıdan dayatılan ödüller içten gelen motivasyonu zayıflatabiliyor, kendi seçtiğin ödül ise çalışıyor.</p>
+    ${rs.length ? `<ul class="list">${rs.map(r => { const n = rewardProgress(r), left = r.target - n; return `
+      <li class="item"><span class="title"><span>${esc(r.name)}</span><span class="sub">${r.kind === 'pomo' ? 'Pomodoro' : esc(S.habits.find(h => h.id === r.habit)?.name || 'Alışkanlık')}: ${Math.min(n, r.target)}/${r.target}${left > 0 && left <= 2 ? ` · Son ${left}!` : ''}</span><span class="bar" style="margin-top:4px"><i style="width:${Math.min(100, n / r.target * 100)}%;background:var(--amber)"></i></span></span>
+      ${left <= 0 ? `<button class="btn primary" data-act="reward-done" data-id="${r.id}">Aldım</button>` : `<button class="del" data-act="reward-del" data-id="${r.id}" aria-label="Sil">${ICON.x}</button>`}</li>`; }).join('')}</ul>` : ''}
+    <form class="stack" style="gap:8px" data-form="reward">
+      <input id="rw-name" placeholder="Ödül, örn. yeni bir kitap" autocomplete="off">
+      <div class="two"><select id="rw-kind" aria-label="Neye bağlı"><option value="pomo">Pomodoro sayısı</option>${S.habits.map(h => `<option value="h:${h.id}">${esc(h.name)} (gün)</option>`).join('')}</select>
+        <input id="rw-target" type="number" inputmode="numeric" min="1" placeholder="Hedef, örn. 20"></div>
+      <button class="btn soft">${ICON.plus}Ödül ekle</button>
+    </form>
+  </section>`;
+}
 function weekTable() {
   const keys = weekKeys();
   const rows = [['Uyku', 's', 9, ' sa'], ['Enerji', 'e', 5, ''], ['Ruh hali', 'm', 5, ''], ['Odak', 'f', 150, ' dk'], ['Görev', 'td', 0, '']];
@@ -1183,6 +1459,11 @@ function viewMe() {
         <div class="stat"><span class="eyebrow">Toplam odak</span><span class="big num">${Math.floor(focusTotal / 60)} sa ${focusTotal % 60} dk</span></div>
       </div>
       ${weekTable()}
+      ${(ss => ss ? `<div class="row" style="align-items:flex-end"><div class="grow"><p class="eyebrow">Uyku düzenliliği</p><p class="small muted">Yatış ve kalkış saatlerinin ne kadar sabit olduğu. Araştırmalarda düzenlilik, uyku süresinden bile önemli çıktı.${ss.shift && ss.shift > 45 ? ` Hafta sonu ortalama ${dur(ss.shift)} geç kalkıyorsun.` : ''}</p></div><span class="score num" style="color:${ss.score >= 80 ? 'var(--good)' : ss.score >= 60 ? 'var(--amber)' : 'var(--bad)'}">${ss.score}</span></div>` : '<p class="small muted">Uyku düzenliliği puanın, 3 gün sabah değerlendirmesi yaptıktan sonra burada çıkar.</p>')(sleepStats())}
+      ${(r => r ? `<p class="small"><strong>Tahminlerin:</strong> ${r > 1.1 ? `ortalama %${Math.round((r - 1) * 100)} iyimser. Yeni görevlerde tahmini buna göre artırıyorum; 2 pomodorodan uzun işleri adımlara böl.` : r < 0.9 ? `ortalama %${Math.round((1 - r) * 100)} kötümser; işler sandığından kısa sürüyor.` : 'oldukça isabetli.'}</p>` : '')(estRatio())}
+      ${(b => b.length ? `<div class="stack" style="gap:6px"><h3>Hangi mola sana iyi geliyor?</h3>${b.map(([k, v]) => `<p class="small">${BREAKS[k] || k} sonrası: ${v[0]} odak tamamlandı, ${v[1]} yarıda kaldı (%${Math.round(v[0] / (v[0] + v[1]) * 100)}).</p>`).join('')}</div>` : '')(breakSummary())}
+      ${(ins => `<div class="stack" style="gap:6px"><h3>Sende işe yarayan</h3>${ins.length ? `<ul class="ins">${ins.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted">Bunlar senin verindeki ilişkiler, kesin neden değil. Koçtan bir mini deney iste ve kendin dene.</p>` : '<p class="small muted">Birkaç hafta kayıt tuttukça senin verinden kişisel bulgular burada çıkacak (ör. erken yattığın gecelerin ertesinde ne kadar odaklandığın).</p>'}</div>`)(insights())}
+      <button class="btn" data-act="share-week">Haftamı görsel olarak paylaş</button>
       ${S.ai ? `<div class="coach-out" id="weekly-out">${md(w.text)}</div>${w.busy && !w.text ? '<p class="thinking">Haftanı inceliyor…</p>' : ''}${w.err ? `<p class="small" style="color:var(--bad)">${esc(w.err)}</p>` : ''}
         <button class="btn soft" data-act="weekly" ${w.busy ? 'disabled' : ''}>${ICON.spark}Koçtan haftalık değerlendirme</button>` : ''}
     </section>
@@ -1202,6 +1483,8 @@ function viewMe() {
       <div class="two"><label class="field">Hedef kilo<input id="p-tw" type="number" inputmode="decimal" value="${esc(p.targetKg)}"></label><label class="field">Amacın<select id="p-gt">${opt(GOALTYPE, p.goalType)}</select></label></div>
       <label class="field">Hareket düzeyin<select id="p-act">${opt(ACTIVITY, p.activity)}</select></label>
       <div class="two"><label class="field">Günlük kalori hedefi<input id="p-kcal" type="number" inputmode="numeric" value="${esc(p.kcalGoal)}"></label><label class="field">Su hedefi (bardak)<input id="p-water" type="number" inputmode="numeric" value="${esc(p.waterGoal)}"></label></div>
+      <div class="two"><label class="field">Kalori alt sınırı<input id="p-kmin" type="number" inputmode="numeric" value="${esc(kcalRange(p)[0])}"></label><label class="field">Kalori üst sınırı<input id="p-kmax" type="number" inputmode="numeric" value="${esc(kcalRange(p)[1])}"></label></div>
+      <p class="small muted">Tek sayı yerine aralık: alt sınır başarı, üst sınır uyarı. Aralıklı hedefler daha sürdürülebilir.</p>
       ${calc ? `<p class="small muted">Bilgilerine göre önerilen: <strong class="num">${calc} kcal</strong>. Kaydederken boş bırakırsan bu kullanılır.</p>` : ''}
       <h2>Koçun ve odağın</h2>
       <div class="two"><label class="field">Koç nasıl konuşsun?<select id="p-tone">${opt(TONES, p.tone)}</select></label><label class="field">Pomodoro tarzı<select id="p-pomo">${opt(POMO, p.pomoMode)}</select></label></div>
@@ -1222,6 +1505,42 @@ function viewMe() {
       <input id="restore-file" type="file" accept="application/json,.json" hidden>
     </section>
   </div>`;
+}
+
+// ================= haftalık paylaşım kartı =================
+function shareWeek() {
+  const c = document.createElement('canvas'); c.width = 1080; c.height = 1350;
+  const g = c.getContext('2d'), keys = weekKeys(), hs = keys.map(histFor).filter(Boolean);
+  const avg = f => { const v = hs.map(h => h[f]).filter(Boolean); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1).replace('.', ',') : '—'; };
+  const f = hs.reduce((a, h) => a + (h.f || 0), 0), td = hs.reduce((a, h) => a + (h.td || 0), 0), ss = sleepStats();
+  const hp = S.habits.length ? Math.round(S.habits.filter(h => hCount(h) >= hTarget(h)).length / S.habits.length * 100) + '%' : '—';
+  g.fillStyle = '#0E6B78'; g.fillRect(0, 0, 1080, 1350);
+  g.fillStyle = '#F07F69'; g.fillRect(80, 120, 120, 10);
+  g.fillStyle = '#FFFFFF'; g.font = '800 84px "Bricolage Grotesque", system-ui, sans-serif'; g.fillText('Haftam', 80, 240);
+  g.font = '500 36px Figtree, system-ui, sans-serif'; g.globalAlpha = .8;
+  g.fillText(`${S.profile.name || ''} · ${fromKey(keys[0]).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} – ${fromKey(keys[6]).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`, 80, 300); g.globalAlpha = 1;
+  const rows = [['Odak', `${Math.floor(f / 60)} sa ${f % 60} dk`], ['Bitirilen iş', String(td)], ['Ortalama uyku', `${avg('s')} sa`], ['Uyku düzeni', ss ? `${ss.score}/100` : '—'], ['Ortalama enerji', `${avg('e')}/5`], ['Ortalama ruh hali', `${avg('m')}/5`], ['Alışkanlık hedefleri', hp]];
+  rows.forEach(([l, v], i) => { const y = 420 + i * 112; g.globalAlpha = .75; g.font = '500 36px Figtree, system-ui, sans-serif'; g.fillText(l, 80, y); g.globalAlpha = 1; g.font = '800 54px "Bricolage Grotesque", system-ui, sans-serif'; g.textAlign = 'right'; g.fillText(v, 1000, y + 4); g.textAlign = 'left'; g.globalAlpha = .2; g.fillRect(80, y + 36, 920, 2); g.globalAlpha = 1; });
+  g.font = '600 32px Figtree, system-ui, sans-serif'; g.globalAlpha = .7; g.fillText('Pusula ile kaydedildi', 80, 1270); g.globalAlpha = 1;
+  c.toBlob(async b => {
+    if (!b) { toast('Görsel oluşturulamadı.'); return; }
+    const file = new File([b], 'pusula-haftam.png', { type: 'image/png' });
+    try { if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: 'Haftam' }); return; } } catch (e) { if (e?.name === 'AbortError') return; }
+    try { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'pusula-haftam.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); toast('Görsel hazırlandı.'); } catch { toast('Paylaşım bu görünümde desteklenmiyor; telefondaki uygulamada dene.'); }
+  }, 'image/png');
+}
+async function splitTask(id) {
+  const sample = await sampler(), t = S.day.tasks.find(x => x.id === id);
+  if (!sample || !t) return;
+  toast('Koç işi adımlara bölüyor…');
+  try {
+    const res = await sample.json(`Bu işi 2-6 somut, küçük adıma böl. Her adım en fazla 1 pomodoro (${POMO[S.profile.pomoMode]?.focus || 25} dk) sürsün ve bir fiille başlasın. Yalnızca JSON dizisi döndür: ["adım", "adım"]\nİş: ${t.title}${t.goal ? '\nHedefi: ' + t.goal : ''}`, { modelTier: 'quick' });
+    const steps = (Array.isArray(res) ? res : []).map(x => String(x || '').trim()).filter(Boolean).slice(0, 6);
+    if (steps.length < 2) { toast('Bölünecek adım bulunamadı.'); return; }
+    const i = S.day.tasks.indexOf(t);
+    S.day.tasks.splice(i, 1, ...steps.map((st, j) => ({ id: newId(), title: st.slice(0, 120), time: j ? '' : t.time, mit: t.mit, urgent: t.urgent, goal: t.goal || t.title, est: 1, done: false })));
+    if (saveDay()) toast(`${steps.length} adıma bölündü.`);
+  } catch (e) { const m = aiErr(e); if (m) toast(m); }
 }
 
 // ================= tanışma =================
@@ -1291,7 +1610,7 @@ function finishOnboarding() {
   delete d.starter;
   saveProfile({ ...d, kcalGoal: calc || Number(d.kcalGoal) || 2000, waterGoal: waterFor(d), onboarded: true });
   const names = new Set(S.habits.map(h => h.name));
-  starter.forEach(k => { const s = STRUGGLES[k]?.[1]; if (s && !names.has(s.name)) S.habits.push({ id: newId(), ...s, log: [] }); });
+  starter.forEach(k => { const s = STRUGGLES[k]?.[1]; if (s && !names.has(s.name)) S.habits.push({ id: newId(), ...s, log: [], target: 5, length: k === 'spor' ? 120 : 66, created: todayKey() }); });
   if (starter.length) saveHabits();
   S.ob = null; renderOb();
   S.timer.mode = S.profile.pomoMode; saveTimer();
@@ -1350,10 +1669,23 @@ document.addEventListener('click', e => {
       const h = S.habits.find(x => x.id === id); if (!h) break;
       h.log = h.log || [];
       if (h.log.includes(S.date)) h.log = h.log.filter(x => x !== S.date);
-      else { h.log.push(S.date); h.log = h.log.sort().slice(-400); const s = streak(h); toast(s > 1 ? `${s} günlük seri!` : 'Harika, başladın.'); }
+      else {
+        const y = addDays(S.date, -1), hadBefore = h.log.some(k => k < y), missedY = !h.log.includes(y) && !(h.jokers || []).includes(y);
+        h.log.push(S.date); h.log = h.log.sort().slice(-400);
+        if (hadBefore && missedY) { h.comebacks = (h.comebacks || 0) + 1; toast('Geri döndün! Kaçırmak değil, geri dönmek sayılır.'); }
+        else { const ws = weekStart(S.date), c = hCount(h, ws), left = hTarget(h) - c; toast(left <= 0 ? 'Bu haftanın hedefi tamam!' : left <= 2 ? `Son ${left}! Haftalık hedefine çok az kaldı.` : `Bu hafta ${c}/${hTarget(h)}.`); }
+      }
       saveHabits(); break;
     }
-    case 'habit-sugg': { const s = STRUGGLES[a.dataset.k]?.[1]; if (s) { S.habits.push({ id: newId(), ...s, log: [] }); saveHabits(); } break; }
+    case 'joker': { const h = S.habits.find(x => x.id === id); if (!h || !canJoker(h)) break; h.jokers = [...(h.jokers || []), addDays(todayKey(), -1)].slice(-24); saveHabits(); toast('Joker kullanıldı; dün sayıldı.'); break; }
+    case 'woop-skip': saveProfile({ woop: { ...(S.profile.woop || {}), [weekStart()]: { skipped: true } } }); break;
+    case 'month-skip': saveProfile({ monthGoal: { ...(S.profile.monthGoal || {}), [monthKey()]: '-' } }); break;
+    case 'brk': S.timer.brk = a.dataset.k; saveTimer(); if (a.dataset.k === 'su') { d.water += 1; saveDay(); toast(`Su: ${d.water}/${S.profile.waterGoal} bardak`); } else render(); break;
+    case 'split': splitTask(id); break;
+    case 'reward-done': saveProfile({ rewards: (S.profile.rewards || []).map(r => r.id === id ? { ...r, done: true } : r) }); toast('Afiyet olsun; hak ettin.'); break;
+    case 'reward-del': saveProfile({ rewards: (S.profile.rewards || []).filter(r => r.id !== id) }); break;
+    case 'share-week': shareWeek(); break;
+    case 'habit-sugg': { const s = STRUGGLES[a.dataset.k]?.[1]; if (s) { S.habits.push({ id: newId(), ...s, log: [], target: 5, length: a.dataset.k === 'spor' ? 120 : 66, created: todayKey() }); saveHabits(); } break; }
     case 'habit-del': arm(a, 'Emin misin?', () => { S.habits = S.habits.filter(h => h.id !== id); saveHabits(); }); break;
     case 'coach': askCoach(''); break;
     case 'coach-stop': coachCtl?.abort(); break;
@@ -1404,7 +1736,9 @@ document.addEventListener('submit', e => {
     case 'task': {
       const title = $('#t-title').value.trim();
       if (!title) { toast('Görevin adını yaz.'); return; }
-      d.tasks.push({ id: newId(), time: $('#t-time').value || '', title: title.slice(0, 120), mit: $('#t-mit').checked, est: +$('#t-est').value || 0, done: false });
+      let est = +$('#t-est').value || 0; const R = estRatio();
+      if (est && R && R > 1.1) { const ne = Math.ceil(est * R); if (ne > est) { toast(`Geçmişine göre tahmini ${est} → ${ne} pomodoro yaptım.`); est = ne; } }
+      d.tasks.push({ id: newId(), time: $('#t-time').value || '', title: title.slice(0, 120), mit: $('#t-mit').checked, urgent: $('#t-urg').checked, goal: $('#t-goal')?.value || '', est, done: false });
       $('#t-title').value = ''; $('#t-time').value = '';
       saveDay(); $('#t-title')?.focus(); break;
     }
@@ -1413,6 +1747,7 @@ document.addEventListener('submit', e => {
       if (!name) { toast('Ne yediğini yaz.'); return; }
       if (!($('#m-kcal').value !== '' && kcal >= 0)) { toast(S.ai ? 'Kaloriyi yaz ya da Tahmin et’e dokun.' : 'Kaloriyi yaz.'); return; }
       d.meals.push({ id: newId(), meal: $('#m-meal').value, name: name.slice(0, 120), kcal, time: nowHM() });
+      if (CAFFEINE.test(name) && S.date === todayKey() && toMin(nowHM()) >= toMin(coffeeCut()) && toMin(nowHM()) > 360) setTimeout(() => toast(`Son kahve saatin ${coffeeCut()} idi. Geç alınan kafein, sen fark etmeden uykunu kısaltabilir.`), 400);
       $('#m-name').value = ''; $('#m-kcal').value = ''; $('#est-note').textContent = '';
       saveDay(); break;
     }
@@ -1420,15 +1755,55 @@ document.addEventListener('submit', e => {
       if (!S.ci.energy || !S.ci.mood) { toast('Enerjini ve ruh halini seç.'); return; }
       const mits = ['#ci-m1', '#ci-m2', '#ci-m3'].map(s => $(s).value.trim()).filter(Boolean);
       mits.forEach(t => d.tasks.push({ id: newId(), time: '', title: t.slice(0, 120), mit: true, done: false }));
-      d.checkin = { sleepH: Number($('#ci-sleep').value) || 0, energy: S.ci.energy, mood: S.ci.mood, intention: $('#ci-int').value.trim().slice(0, 200), at: nowHM() };
+      const bed = $('#ci-bed').value || S.profile.sleep, wakeT = $('#ci-wake').value || S.profile.wake;
+      const sleepH = Math.round(((toMin(wakeT) - toMin(bed) + 1440) % 1440) / 15) / 4;
+      d.checkin = { sleepH, bed, wakeT, energy: S.ci.energy, mood: S.ci.mood, intention: $('#ci-int').value.trim().slice(0, 200), at: nowHM() };
       S.ci = {};
       if (saveDay()) toast(d.checkin.energy <= 2 ? 'Enerjin düşük; bugün hafif başla, zor işi zirve saatine bırak.' : 'Harika bir başlangıç. Hadi ilk işe!');
       break;
     }
     case 'review': {
-      d.review = { wins: $('#rv-wins').value.trim().slice(0, 500), grat: $('#rv-grat').value.trim().slice(0, 500), improve: $('#rv-imp').value.trim().slice(0, 500), at: nowHM() };
-      if (saveDay()) toast('Günü kapattın. İyi dinlen.');
+      const mitT = $('#rv-mit').value.trim().slice(0, 120), tk = addDays(S.date, 1);
+      const carry = d.tasks.filter(t => !t.done && !t.carried && $('#rv-c-' + t.id)?.checked).map(t => ({ ...t, time: $('#rv-t-' + t.id)?.value || '' }));
+      d.review = { wins: $('#rv-wins').value.trim().slice(0, 500), learned: $('#rv-learn').value.trim().slice(0, 300), grat: $('#rv-grat').value.trim().slice(0, 500), mit: mitT, carried: carry.length, at: nowHM() };
+      carry.forEach(t => { const x = d.tasks.find(y => y.id === t.id); if (x) x.carried = true; });
+      if (!saveDay()) break;
+      if (carry.length || mitT) changeDay(tk, nd => {
+        carry.forEach(t => nd.tasks.push({ id: newId(), title: t.title, time: t.time, mit: t.mit, urgent: t.urgent, goal: t.goal || '', est: t.est || 0, done: false }));
+        if (mitT) nd.tasks.push({ id: newId(), title: mitT, time: peakStart(), mit: true, done: false });
+      }).catch(() => toast('Yarının planı kaydedilemedi.'));
+      toast('Gün kapandı. Zihnini işten ayır, iyi dinlen.');
+      window.scrollTo(0, 0);
       break;
+    }
+    case 'woop': {
+      const v = id => $(id).value.trim().slice(0, 200), w = { wish: v('#wp-w'), outcome: v('#wp-o'), obstacle: v('#wp-b'), plan: v('#wp-p'), at: todayKey() };
+      if (!w.wish || !w.obstacle || !w.plan) { toast('Dilek, engel ve planı doldur.'); return; }
+      const all = { ...(S.profile.woop || {}), [weekStart()]: w }; Object.keys(all).sort().slice(0, -8).forEach(k => delete all[k]);
+      saveProfile({ woop: all }); toast('Hafta başladı. Engel çıkınca planın hazır.'); break;
+    }
+    case 'month': {
+      const g = $('#mo-goal').value.trim().slice(0, 200); if (!g) { toast('Tek bir hedef yaz ya da Geç’e dokun.'); return; }
+      const all = { ...(S.profile.monthGoal || {}), [monthKey()]: g }; Object.keys(all).sort().slice(0, -12).forEach(k => delete all[k]);
+      saveProfile({ monthGoal: all }); toast('Bu ayın hedefi kaydedildi.'); break;
+    }
+    case 'catgoal': {
+      const k = $('#cg-cat').value, mn = Math.round(Number($('#cg-min').value)) || 0, mx = Math.round(Number($('#cg-max').value)) || 0;
+      if (mn && mx && mn > mx) { toast('Alt sınır üst sınırdan büyük olamaz.'); return; }
+      saveProfile({ cats: cats().map(c => c.k === k ? { ...c, min: mn || 0, max: mx || 0 } : c) }); toast('Hedef kaydedildi.'); break;
+    }
+    case 'weight': {
+      const kg = Math.round(Number(String($('#wt-kg').value).replace(',', '.')) * 10) / 10;
+      if (!(kg >= 30 && kg <= 300)) { toast('Geçerli bir kilo yaz (30–300 kg).'); return; }
+      const list = (S.profile.weights || []).filter(w => w.d !== S.date).concat({ d: S.date, kg }).sort((a, b) => a.d.localeCompare(b.d)).slice(-400);
+      $('#wt-kg').value = '';
+      saveProfile({ weights: list, weightKg: String(list[list.length - 1].kg) }); toast('Kilon kaydedildi.'); break;
+    }
+    case 'reward': {
+      const name = $('#rw-name').value.trim().slice(0, 80), kind = $('#rw-kind').value, target = Math.round(Number($('#rw-target').value));
+      if (!name || !(target >= 1)) { toast('Ödülü ve hedef sayısını yaz.'); return; }
+      const r = { id: newId(), name, kind: kind === 'pomo' ? 'pomo' : 'habit', habit: kind.startsWith('h:') ? kind.slice(2) : '', target, from: todayKey() };
+      saveProfile({ rewards: [...(S.profile.rewards || []), r] }); toast('Ödül eklendi.'); break;
     }
     case 'time': {
       const st = $('#tm-s').value, en = $('#tm-e').value;
@@ -1455,8 +1830,8 @@ document.addEventListener('submit', e => {
     case 'habit': {
       const name = $('#h-name').value.trim(), cue = $('#h-cue').value.trim();
       if (!name) { toast('Ne yapacağını yaz.'); return; }
-      S.habits.push({ id: newId(), name: name.slice(0, 80), cue: (cue || 'Her gün').slice(0, 80), log: [] });
-      $('#h-name').value = ''; $('#h-cue').value = '';
+      S.habits.push({ id: newId(), name: name.slice(0, 80), cue: (cue || 'Her gün').slice(0, 80), log: [], target: +$('#h-target').value || 5, length: +$('#h-len').value || 66, bundle: $('#h-bundle').value.trim().slice(0, 80), created: todayKey() });
+      $('#h-name').value = ''; $('#h-cue').value = ''; $('#h-bundle').value = '';
       saveHabits(); break;
     }
     case 'api': {
@@ -1475,6 +1850,8 @@ document.addEventListener('submit', e => {
       const k = Math.round(Number(v('#p-kcal'))), w = Math.round(Number(v('#p-water')));
       np.kcalGoal = k >= 800 && k <= 6000 ? k : (kcalFor({ ...S.profile, ...np }) || 2000);
       np.waterGoal = w >= 1 && w <= 16 ? w : waterFor(np);
+      const kmn = Math.round(Number(v('#p-kmin'))), kmx = Math.round(Number(v('#p-kmax')));
+      np.kcalMin = kmn >= 800 && kmn <= np.kcalGoal ? kmn : 0; np.kcalMax = kmx >= np.kcalGoal && kmx <= 6500 ? kmx : 0;
       saveProfile(np);
       if (S.timer.phase === 'idle') { S.timer.mode = np.pomoMode; saveTimer(); }
       toast('Kaydedildi.'); break;
@@ -1489,6 +1866,9 @@ document.addEventListener('input', e => {
     clearTimeout(noteTimer); noteTimer = setTimeout(flushNote, 700); return;
   }
   if (S.ob && ['ob-h', 'ob-w', 'ob-act'].includes(id)) { obCollect(); const c = kcalFor(S.ob.d); const el = $('#ob-calc'); if (el) el.textContent = c ? c + ' kcal' : '—'; }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'cg-cat') { const c = catOf(e.target.value); $('#cg-min').value = c.min || ''; $('#cg-max').value = c.max || ''; }
 });
 document.addEventListener('change', e => { if (S.ob && e.target.id === 'ob-act') { obCollect(); const c = kcalFor(S.ob.d); const el = $('#ob-calc'); if (el) el.textContent = c ? c + ' kcal' : '—'; } });
 document.addEventListener('visibilitychange', () => {
