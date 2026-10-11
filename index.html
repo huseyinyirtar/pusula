@@ -202,6 +202,12 @@ input[type=time]{min-width:104px}
 .ins{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
 .ins li{background:var(--sunken);border-radius:12px;padding:10px 12px;font-size:14px}
 .score{font-family:var(--display);font-size:34px;font-weight:800;line-height:1}
+.sec{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 -6px}
+.prompt{border-color:var(--accent);background:var(--accent-soft)}
+.prompt h2{color:var(--ink)}
+.grp{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:14px 0 4px;list-style:none}
+.grp:first-child{padding-top:0}
+.flow h1{font-size:28px}
 .mini .dot{width:8px;height:8px;border-radius:50%;background:var(--tomato)}
 .mini.brk .dot{background:var(--good)}
 
@@ -253,6 +259,7 @@ input[type=time]{min-width:104px}
 <nav class="tabs" aria-label="Bölümler"><div class="tabs-in" id="tabs"></div></nav>
 <div id="sheet-root"></div>
 <div id="ob-root"></div>
+<div id="flow-root"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
@@ -367,7 +374,7 @@ const S = {
   mode: 'loading', profile: { ...DEFAULT_PROFILE }, profileLoaded: false, notes: [], habits: [], habitsLoaded: false,
   history: {}, histLoaded: false, day: normDay(), dayLoaded: false, date: todayKey(), tab: 'today', lastTab: null,
   ai: false, coach: { text: '', busy: false, err: '' }, weekly: { text: '', busy: false, err: '' },
-  planSugg: null, planBusy: false, editing: null, ob: null, ci: {}, timer: null, track: null, zsub: 'pomo',
+  planSugg: null, planBusy: false, editing: null, ob: null, flow: null, ci: {}, timer: null, track: null, zsub: 'pomo',
 };
 
 // ================= depolama =================
@@ -443,7 +450,7 @@ function breakStats(d) {
 const bedMin = t => { const m = toMin(t); return m < 720 ? m + 1440 : m; };
 const focusMin = d => d.focus.reduce((a, f) => a + (Number(f.mins) || 0), 0);
 const sumKcal = d => d.meals.reduce((a, m) => a + (Number(m.kcal) || 0), 0);
-const summarize = d => ({ t: timeByCat(d), ...estSum(d), bq: breakStats(d), bt: d.checkin?.bed ? bedMin(d.checkin.bed) : 0, wt: d.checkin?.wakeT ? toMin(d.checkin.wakeT) : 0, k: sumKcal(d), w: d.water, m: d.checkin?.mood || 0, e: d.checkin?.energy || 0, s: d.checkin?.sleepH || 0, f: focusMin(d), p: d.focus.length, td: d.tasks.filter(t => t.done).length, tt: d.tasks.length });
+const summarize = d => ({ r: d.review?.rating || 0, t: timeByCat(d), ...estSum(d), bq: breakStats(d), bt: d.checkin?.bed ? bedMin(d.checkin.bed) : 0, wt: d.checkin?.wakeT ? toMin(d.checkin.wakeT) : 0, k: sumKcal(d), w: d.water, m: d.checkin?.mood || 0, e: d.checkin?.energy || 0, s: d.checkin?.sleepH || 0, f: focusMin(d), p: d.focus.length, td: d.tasks.filter(t => t.done).length, tt: d.tasks.length });
 function writeDay(k, d) {
   const data = clone(d);
   if (S.mode === 'cloud') persist('day:' + k, dayRef(k), data); else LS.set('day:' + k, data);
@@ -724,7 +731,7 @@ Zaman kullanımı: ${Object.entries(timeByCat(d)).sort((a, b) => b[1] - a[1]).ma
 Beslenme: ${sumKcal(d)} / ${p.kcalGoal} kcal (${d.meals.map(m => `${m.meal}: ${m.name} ${m.kcal}`).join('; ') || 'kayıt yok'})
 Su: ${d.water}/${p.waterGoal} bardak
 Bugün yapılan alışkanlıklar: ${hDone.join(', ') || 'henüz yok'}
-${d.review ? `Günü kapattı: iyi giden: ${d.review.wins}; öğrendiği: ${d.review.learned || '-'}; yarının en önemli işi: ${d.review.mit || '-'}` : ''}`;
+${d.review ? `Günü kapattı (gün puanı ${d.review.rating || '-'}/5): iyi giden: ${d.review.wins}; öğrendiği: ${d.review.learned || '-'}; yarının en önemli işi: ${d.review.mit || '-'}` : ''}`;
 }
 function weekText() {
   return 'SON 7 GÜN\n' + weekKeys().map(k => {
@@ -958,60 +965,18 @@ function timeline() {
     <p class="small muted">${awake ? `Uykuya ${Math.floor(left / 60)} sa ${left % 60} dk var. ` : ''}${ch.hint} Son kahve: ${coffeeCut()} (ince çizgi).</p>
   </section>`;
 }
-function checkinCard() {
-  const c = S.ci;
-  const seg = (key, labels) => `<div class="seg" role="group">${labels.map((l, i) => `<button type="button" data-act="ci" data-k="${key}" data-v="${i + 1}" aria-pressed="${c[key] === i + 1}" aria-label="${l}">${i + 1}</button>`).join('')}</div>
-    <p class="small muted">${c[key] ? labels[c[key] - 1] : '1 en düşük, 5 en yüksek'}</p>`;
-  return `
-  <form class="card" data-form="checkin">
-    <div><p class="eyebrow">Sabah değerlendirmesi · 1 dakika</p><h2>Bugün nasılsın?</h2></div>
-    <div class="two"><label class="field">Dün kaçta yattın?<input id="ci-bed" type="time" value="${esc(S.profile.sleep)}"></label><label class="field">Bugün kaçta kalktın?<input id="ci-wake" type="time" value="${esc(S.profile.wake)}"></label></div>
-    <div class="stack" style="gap:6px"><h3>Enerjin</h3>${seg('energy', ENERGY)}</div>
-    <div class="stack" style="gap:6px"><h3>Ruh halin</h3>${seg('mood', MOOD)}</div>
-    <div class="stack" style="gap:8px"><h3>Bugünün en önemli 3 işi</h3>
-      <input id="ci-m1" placeholder="1. En önemlisi" autocomplete="off"><input id="ci-m2" placeholder="2." autocomplete="off"><input id="ci-m3" placeholder="3." autocomplete="off"></div>
-    <label class="field">Bugün için niyetin<input id="ci-int" placeholder="Örn. sakin kalmak, sporu atlamamak" autocomplete="off"></label>
-    <button class="btn primary">Günü başlat</button>
-  </form>`;
-}
-function reviewCard() {
-  const open = sortedTasks(S.day).filter(t => !t.done && !t.carried);
-  return `
-  <form class="card evening" data-form="review">
-    <div><p class="eyebrow">Günü kapatma · 5 dakika</p><h2>Günü kapatalım</h2></div>
-    ${open.length ? `<div class="stack" style="gap:8px"><h3>Yarım kalanlar</h3><p class="small muted">Bitmeyen işler, plan yapılana kadar zihnini meşgul eder. Yarın ne zaman yapacağını seç; bu yük kalksın.</p>
-      ${open.map(t => `<div class="row"><input type="checkbox" id="rv-c-${t.id}" checked style="width:22px;min-height:22px;flex:none" aria-label="Yarına taşı"><label class="grow small" for="rv-c-${t.id}" style="overflow-wrap:anywhere">${esc(t.title)}</label><input type="time" id="rv-t-${t.id}" value="${esc(t.time || '')}" style="width:auto;min-width:96px" aria-label="Yarın saat"></div>`).join('')}</div>` : ''}
-    <label class="field">Bugün ne iyi gitti?<textarea id="rv-wins" rows="2"></textarea></label>
-    <label class="field">Bugün ne öğrendim? (tek cümle)<input id="rv-learn" autocomplete="off"></label>
-    <label class="field">Yarının en önemli işi<input id="rv-mit" autocomplete="off" placeholder="Zirve saatine (${peakStart()}) yerleşir"></label>
-    <label class="field">Minnettar olduğun şeyler (isteğe bağlı)<textarea id="rv-grat" rows="2" placeholder="Küçük şeyler de sayılır"></textarea></label>
-    <button class="btn primary">Günü kapat</button>
-  </form>`;
-}
 function closedCard() {
-  const r = S.day.review, top = doneItems().slice(0, 3);
+  const r = S.day.review, top = doneItems().slice(0, 3), plans = r.mits || (r.mit ? [r.mit] : []);
   return `
   <section class="card evening">
-    <div><p class="eyebrow">Gün kapandı</p><h2>Bugünlük bu kadar</h2></div>
+    <div><p class="eyebrow">Gün kapandı</p><h2>${r.rating ? `Gün puanın: ${r.rating}/5 · ${MOOD[r.rating - 1]}` : 'Bugünlük bu kadar'}</h2></div>
+    ${r.rating && r.rating <= 2 ? '<p class="small">Zor bir gündü. Böyle günler olur; yarın tek küçük adım yeter.</p>' : ''}
     ${top.length ? `<h3>Günün en iyi 3’ü</h3><ul class="list">${top.map(x => `<li class="item"><span class="okmark">${ICON.check}</span><span class="title"><span>${esc(x.l)}</span><span class="sub">${x.k}</span></span></li>`).join('')}</ul>` : ''}
     ${r.learned ? `<p class="small"><strong>Öğrendiğin:</strong> ${esc(r.learned)}</p>` : ''}
-    ${r.mit ? `<p class="small"><strong>Yarının en önemli işi:</strong> ${esc(r.mit)} · ${peakStart()}</p>` : ''}
+    ${plans.length ? `<p class="small"><strong>Yarının planı:</strong> ${plans.map(esc).join(' · ')}</p>` : ''}
     ${r.carried ? `<p class="small muted">${r.carried} yarım iş yarına taşındı.</p>` : ''}
     <p class="small muted">Artık işi zihninden çıkarma zamanı. Akşamı işten kopuk geçirmek, yarın daha dinç başlamanı sağlar.</p>
   </section>`;
-}
-function woopCard() {
-  const monday = fromKey(todayKey()).getDay() === 1;
-  return `
-  <form class="card" data-form="woop">
-    <div><p class="eyebrow">${monday ? 'Yeni hafta, yeni sayfa' : 'Bu haftanın hedefi'} · WOOP</p><h2>Bu hafta neyi başarmak istiyorsun?</h2></div>
-    ${lastWeekLine()}
-    <label class="field">Dilek: bu haftaki hedefin<input id="wp-w" autocomplete="off" placeholder="Örn. raporu cuma bitirmek"></label>
-    <label class="field">Sonuç: başarırsan en güzel sonucu ne olur?<input id="wp-o" autocomplete="off"></label>
-    <label class="field">Engel: içindeki en büyük engel ne?<input id="wp-b" autocomplete="off" placeholder="Örn. akşam yorgunken telefona dalmak"></label>
-    <label class="field">Plan: Eğer bu engel çıkarsa, o zaman…<input id="wp-p" autocomplete="off" placeholder="Örn. telefonu başka odaya koyup 1 pomodoro yaparım"></label>
-    <div class="row"><button class="btn primary grow">Haftayı başlat</button><button type="button" class="btn ghost" data-act="woop-skip">Bu hafta geç</button></div>
-  </form>`;
 }
 function lastWeekLine() {
   const ws = addDays(weekStart(), -7), hs = [...Array(7)].map((_, i) => S.history[addDays(ws, i)]).filter(Boolean);
@@ -1022,18 +987,131 @@ function lastWeekLine() {
   const bad = (m && m < 3) || (hp !== null && hp < 50);
   return `<p class="banner">Geçen hafta: ${dur(f)} odak, ${td} iş bitti${m ? `, ruh hali ort. ${m.toFixed(1).replace('.', ',')}` : ''}${hp !== null ? `, alışkanlık hedeflerinin %${hp}’i tuttu` : ''}.${bad ? ' Zor bir haftaydı; geride kaldı. Bu hafta temiz bir sayfa.' : ''}</p>`;
 }
-function monthCard() {
-  const mk = monthKey(), prev = monthKey(addDays(mk + '-01', -1));
-  const hs = Object.entries(S.history).filter(([k]) => monthKey(k) === prev).map(([, h]) => h);
-  const f = hs.reduce((a, h) => a + (h.f || 0), 0), td = hs.reduce((a, h) => a + (h.td || 0), 0);
-  return `
-  <form class="card" data-form="month">
-    <div><p class="eyebrow">Yeni ay, yeni sayfa</p><h2>${esc(fromKey(mk + '-01').toLocaleDateString('tr-TR', { month: 'long' }))} için tek bir hedef</h2></div>
-    ${hs.length ? `<p class="banner">Geçen ay: ${dur(f)} odak, ${td} iş bitti, ${hs.length} gün kayıt tuttun.</p>` : ''}
-    <p class="small muted">Yeni dönemlerin başı, yeni bir başlangıç için en elverişli anlardır. Tek bir hedef seç.</p>
-    <input id="mo-goal" autocomplete="off" placeholder="Örn. her gün 10 sayfa okumak">
-    <div class="row"><button class="btn primary grow">Kaydet</button><button type="button" class="btn ghost" data-act="month-skip">Geç</button></div>
-  </form>`;
+const promptCard = (eyebrow, title, text, kind, btn, extra = '') => `
+  <section class="card prompt"><p class="eyebrow">${eyebrow}</p><h2>${title}</h2>${text ? `<p class="small muted">${text}</p>` : ''}
+    <div class="row wrap"><button class="btn primary" data-act="flow" data-k="${kind}">${btn}</button>${extra}</div></section>`;
+
+// ---- adım adım akışlar: sabah, akşam, hafta (WOOP), ay ----
+const fval = id => (document.getElementById(id)?.value || '').trim();
+const seg5 = (key, labels, d) => `<div class="seg" role="group">${labels.map((l, i) => `<button type="button" data-act="fseg" data-k="${key}" data-v="${i + 1}" aria-pressed="${d[key] === i + 1}" aria-label="${l}">${i + 1}</button>`).join('')}</div>
+  <p class="small muted" id="fseg-${key}">${d[key] ? labels[d[key] - 1] : '1 en düşük, 5 en yüksek'}</p>`;
+const SEG_LABELS = () => ({ energy: ENERGY, mood: MOOD, rating: MOOD });
+const FLOWS = {
+  morning: {
+    title: 'Güne başla', done: 'Günü başlat',
+    init: () => ({ bed: S.profile.sleep, wake: S.profile.wake }),
+    steps: [
+      { html: d => `<h1>Günaydın${S.profile.name ? ', ' + esc(S.profile.name) : ''}!</h1><p class="muted">Önce uykuna bakalım. Düzenli saatlerde yatıp kalkmak, uyku süresi kadar önemli.</p>
+          <div class="two"><label class="field">Dün kaçta yattın?<input id="f-bed" type="time" value="${esc(d.bed)}"></label><label class="field">Bugün kaçta kalktın?<input id="f-wake" type="time" value="${esc(d.wake)}"></label></div>`,
+        collect: d => { d.bed = fval('f-bed') || d.bed; d.wake = fval('f-wake') || d.wake; } },
+      { html: d => `<h1>Bugün nasılsın?</h1><h3>Enerjin</h3>${seg5('energy', ENERGY, d)}<h3>Ruh halin</h3>${seg5('mood', MOOD, d)}`,
+        check: d => !d.energy || !d.mood ? 'Enerjini ve ruh halini seç.' : '' },
+      { html: d => {
+          const planned = S.day.tasks.filter(t => t.mit && !t.done), n = Math.max(1, 3 - planned.length);
+          return `<h1>Bugünün en önemli işleri</h1>
+          ${planned.length ? `<p class="muted">Dün akşam planladıkların:</p><ul class="list">${planned.map(t => `<li class="item"><span class="t num">${esc(t.time || '—')}</span><span class="title"><span>${esc(t.title)}</span></span></li>`).join('')}</ul><p class="muted">Eklemek istediğin başka önemli iş var mı?</p>` : '<p class="muted">En fazla 3 iş seç; gerisi bekleyebilir.</p>'}
+          ${[1, 2, 3].slice(0, n).map(i => `<input id="f-m${i}" placeholder="${planned.length ? 'Ek önemli iş (isteğe bağlı)' : i + '. önemli iş'}" autocomplete="off" value="${esc(d['m' + i] || '')}">`).join('')}
+          <label class="field">Bugün için niyetin (isteğe bağlı)<input id="f-int" autocomplete="off" placeholder="Örn. sakin kalmak, sporu atlamamak" value="${esc(d.int || '')}"></label>`; },
+        collect: d => { [1, 2, 3].forEach(i => { const el = document.getElementById('f-m' + i); if (el) d['m' + i] = el.value.trim(); }); d.int = fval('f-int'); } },
+    ],
+    finish: d => {
+      const day = S.day;
+      [d.m1, d.m2, d.m3].filter(Boolean).forEach(t => day.tasks.push({ id: newId(), time: '', title: t.slice(0, 120), mit: true, done: false }));
+      const sleepH = Math.round(((toMin(d.wake) - toMin(d.bed) + 1440) % 1440) / 15) / 4;
+      day.checkin = { sleepH, bed: d.bed, wakeT: d.wake, energy: d.energy, mood: d.mood, intention: (d.int || '').slice(0, 200), at: nowHM() };
+      if (saveDay()) toast(d.energy <= 2 ? 'Enerjin düşük; hafif başla, zor işi zirve saatine bırak.' : 'Harika bir başlangıç. Hadi ilk işe!');
+    },
+  },
+  evening: {
+    title: 'Günü kapat', done: 'Günü kapat',
+    init: () => ({ carry: Object.fromEntries(S.day.tasks.filter(t => !t.done && !t.carried).map(t => [t.id, { on: true, time: t.time || '' }])) }),
+    steps: [
+      { html: d => `<h1>Bugün nasıl geçti?</h1>${seg5('rating', MOOD, d)}
+          <label class="field">Ne iyi gitti? Seni ne zorladı?<textarea id="f-wins" rows="4">${esc(d.wins || '')}</textarea></label>`,
+        collect: d => { d.wins = fval('f-wins'); }, check: d => !d.rating ? 'Günün nasıl geçtiğini 1–5 arasında seç.' : '' },
+      { skip: d => !Object.keys(d.carry).length,
+        html: d => `<h1>Yarım kalanlar</h1><p class="muted">Bitmeyen işler, ne zaman yapacağına karar verene kadar zihnini meşgul eder. Yarına taşıyacaklarını seç ve istersen saat ver.</p>
+          <div class="stack" style="gap:10px">${S.day.tasks.filter(t => d.carry[t.id]).map(t => `<div class="row"><input type="checkbox" id="fc-${t.id}" ${d.carry[t.id].on ? 'checked' : ''} style="width:22px;min-height:22px;flex:none"><label class="grow" for="fc-${t.id}" style="overflow-wrap:anywhere">${esc(t.title)}</label><input type="time" id="ft-${t.id}" value="${esc(d.carry[t.id].time)}" style="width:auto;min-width:96px" aria-label="Yarın saat"></div>`).join('')}</div>`,
+        collect: d => { for (const id in d.carry) { const c = document.getElementById('fc-' + id), t = document.getElementById('ft-' + id); if (c) d.carry[id] = { on: c.checked, time: t?.value || '' }; } } },
+      { html: d => `<h1>Bugünden ne kalsın?</h1>
+          <label class="field">Bugün ne öğrendin? (tek cümle)<input id="f-learn" autocomplete="off" value="${esc(d.learned || '')}"></label>
+          <label class="field">Minnettar olduğun şeyler (isteğe bağlı)<textarea id="f-grat" rows="3" placeholder="Küçük şeyler de sayılır">${esc(d.grat || '')}</textarea></label>`,
+        collect: d => { d.learned = fval('f-learn'); d.grat = fval('f-grat'); } },
+      { html: d => `<h1>Yarını planla</h1><p class="muted">Yarının en önemli işlerini şimdi seç; sabah karar vermekle uğraşma. İlki zirve saatine (${peakStart()}) yerleşir.</p>
+          <div class="stack" style="gap:10px">${[1, 2, 3].map(i => `<div class="row"><input id="f-t${i}" class="grow" placeholder="${i === 1 ? 'En önemli iş' : i + '. iş (isteğe bağlı)'}" autocomplete="off" value="${esc(d['n' + i] || '')}"><input id="f-h${i}" type="time" style="width:auto;min-width:96px" value="${esc(d['h' + i] ?? (i === 1 ? peakStart() : ''))}" aria-label="Saat"></div>`).join('')}</div>`,
+        collect: d => { [1, 2, 3].forEach(i => { d['n' + i] = fval('f-t' + i); d['h' + i] = fval('f-h' + i); }); } },
+    ],
+    finish: d => {
+      const day = S.day, tk = addDays(S.date, 1);
+      const carry = day.tasks.filter(t => d.carry[t.id]?.on).map(t => ({ ...t, time: d.carry[t.id].time }));
+      const plans = [1, 2, 3].map(i => ({ title: d['n' + i], time: d['h' + i] || '' })).filter(x => x.title);
+      day.review = { rating: d.rating, wins: (d.wins || '').slice(0, 500), learned: (d.learned || '').slice(0, 300), grat: (d.grat || '').slice(0, 500), mit: plans[0]?.title || '', mits: plans.map(x => x.title.slice(0, 120)), carried: carry.length, at: nowHM() };
+      carry.forEach(t => { const x = day.tasks.find(y => y.id === t.id); if (x) x.carried = true; });
+      if (!saveDay()) return;
+      if (carry.length || plans.length) changeDay(tk, nd => {
+        carry.forEach(t => nd.tasks.push({ id: newId(), title: t.title, time: t.time, mit: t.mit, urgent: t.urgent, goal: t.goal || '', est: t.est || 0, done: false }));
+        plans.forEach(x => nd.tasks.push({ id: newId(), title: x.title.slice(0, 120), time: x.time, mit: true, done: false }));
+      }).catch(() => toast('Yarının planı kaydedilemedi.'));
+      toast(d.rating <= 2 ? 'Zor bir gündü. Böyle günler olur; yarın tek küçük adım yeter.' : 'Gün kapandı. Zihnini işten ayır, iyi dinlen.');
+      window.scrollTo(0, 0);
+    },
+  },
+  woop: {
+    title: 'Haftanın hedefi', done: 'Haftayı başlat', init: () => ({}),
+    steps: [
+      { html: d => `<h1>Bu hafta neyi başarmak istiyorsun?</h1>${lastWeekLine()}<p class="muted">Ulaşılabilir ama seni biraz zorlayan tek bir hedef.</p><input id="f-w" autocomplete="off" placeholder="Örn. raporu cuma bitirmek" value="${esc(d.wish || '')}">`,
+        collect: d => { d.wish = fval('f-w'); }, check: d => !d.wish ? 'Bir hedef yaz.' : '' },
+      { html: d => `<h1>Başarırsan ne olur?</h1><p class="muted">En güzel sonucu bir an hayal et.</p><input id="f-o" autocomplete="off" placeholder="Örn. hafta sonu içim rahat olur" value="${esc(d.outcome || '')}">`,
+        collect: d => { d.outcome = fval('f-o'); } },
+      { html: d => `<h1>Seni ne durdurabilir?</h1><p class="muted">Dışarıdaki değil, içindeki en büyük engel.</p><input id="f-b" autocomplete="off" placeholder="Örn. akşam yorgunken telefona dalmak" value="${esc(d.obstacle || '')}">`,
+        collect: d => { d.obstacle = fval('f-b'); }, check: d => !d.obstacle ? 'Engeli yaz.' : '' },
+      { html: d => `<h1>Eğer ${esc(d.obstacle)} olursa…</h1><p class="muted">…o zaman ne yapacaksın?</p><input id="f-p" autocomplete="off" placeholder="Örn. telefonu başka odaya koyup 1 pomodoro yaparım" value="${esc(d.plan || '')}">`,
+        collect: d => { d.plan = fval('f-p'); }, check: d => !d.plan ? 'Planını yaz.' : '' },
+    ],
+    finish: d => {
+      const all = { ...(S.profile.woop || {}), [weekStart()]: { wish: d.wish.slice(0, 200), outcome: (d.outcome || '').slice(0, 200), obstacle: d.obstacle.slice(0, 200), plan: d.plan.slice(0, 200), at: todayKey() } };
+      Object.keys(all).sort().slice(0, -8).forEach(k => delete all[k]);
+      saveProfile({ woop: all }); toast('Hafta başladı. Engel çıkınca planın hazır.');
+    },
+  },
+  month: {
+    title: 'Yeni ay', done: 'Kaydet', init: () => ({}),
+    steps: [
+      { html: d => {
+          const mk = monthKey(), prev = monthKey(addDays(mk + '-01', -1)), hs = Object.entries(S.history).filter(([k]) => monthKey(k) === prev).map(([, h]) => h);
+          const f = hs.reduce((a, h) => a + (h.f || 0), 0), td = hs.reduce((a, h) => a + (h.td || 0), 0);
+          return `<h1>${esc(fromKey(mk + '-01').toLocaleDateString('tr-TR', { month: 'long' }))} için tek bir hedef</h1>
+          ${hs.length ? `<p class="banner">Geçen ay: ${dur(f)} odak, ${td} iş bitti, ${hs.length} gün kayıt tuttun.</p>` : ''}
+          <p class="muted">Yeni dönemlerin başı, yeni bir başlangıç için en elverişli anlardır.</p>
+          <input id="f-g" autocomplete="off" placeholder="Örn. her gün 10 sayfa okumak" value="${esc(d.goal || '')}">`; },
+        collect: d => { d.goal = fval('f-g'); }, check: d => !d.goal ? 'Bir hedef yaz.' : '' },
+    ],
+    finish: d => {
+      const all = { ...(S.profile.monthGoal || {}), [monthKey()]: d.goal.slice(0, 200) };
+      Object.keys(all).sort().slice(0, -12).forEach(k => delete all[k]);
+      saveProfile({ monthGoal: all }); toast('Bu ayın hedefi kaydedildi.');
+    },
+  },
+};
+const flowSteps = () => FLOWS[S.flow.kind].steps.filter(st => !st.skip?.(S.flow.d));
+function openFlow(kind) { S.flow = { kind, step: 0, d: FLOWS[kind].init() }; renderFlow(); }
+function renderFlow() {
+  const root = $('#flow-root'), f = S.flow;
+  if (!f) { root.innerHTML = ''; return; }
+  const F = FLOWS[f.kind], steps = flowSteps(); f.step = clamp(f.step, 0, steps.length - 1);
+  root.innerHTML = `
+  <div class="sheet flow" role="dialog" aria-label="${F.title}">
+    <div class="sheet-in">
+      <div class="row"><p class="eyebrow grow">${F.title} · ${f.step + 1}/${steps.length}</p><button class="btn ghost" data-act="flow-close">Kapat</button></div>
+      <div class="steps">${steps.map((_, i) => `<i class="${i <= f.step ? 'on' : ''}"></i>`).join('')}</div>
+      ${steps[f.step].html(f.d)}
+      <div class="row" style="margin-top:auto;padding-top:8px">
+        ${f.step ? '<button class="btn" data-act="flow-back">Geri</button>' : ''}<span class="grow"></span>
+        <button class="btn primary big" data-act="flow-next">${f.step === steps.length - 1 ? F.done : 'İleri'}</button>
+      </div>
+    </div>
+  </div>`;
+  root.querySelector('.sheet').scrollTop = 0;
 }
 function habitsCard(compact) {
   const hs = S.habits;
@@ -1055,24 +1133,24 @@ function viewToday() {
   const p = S.profile, d = S.day, n = nextTask();
   const isToday = S.date === todayKey(), hour = new Date().getHours();
   const done = d.tasks.filter(t => t.done).length, total = d.tasks.length;
-  const kcal = sumKcal(d), goal = Number(p.kcalGoal) || 2000, fm = focusMin(d);
+  const kcal = sumKcal(d), fm = focusMin(d), ks = kcalStatus(kcal, p), wins = doneItems();
   const water = [...Array(clamp(Number(p.waterGoal) || 8, 1, 16))].map((_, i) =>
     `<button class="drop${i < d.water ? ' on' : ''}" data-act="water" data-i="${i}" aria-label="${i + 1}. bardak"></button>`).join('');
-  const showCheckin = isToday && S.dayLoaded && !d.checkin;
-  const showReview = isToday && S.dayLoaded && !d.review && hour >= 18;
-  const wk = weekStart(), woop = p.woop?.[wk], showWoop = isToday && S.profileLoaded && !woop && !(showCheckin && hour < 17);
-  const showMonth = isToday && S.profileLoaded && new Date().getDate() <= 5 && !(p.monthGoal && monthKey() in p.monthGoal) && !(showCheckin && hour < 17);
-  const ks = kcalStatus(kcal, p), wins = doneItems();
+  const ready = isToday && S.dayLoaded && S.profileLoaded, woop = p.woop?.[weekStart()];
+  const evening = ready && !d.review && hour >= 17, morning = ready && !d.checkin && !d.review && !evening;
+  const prompts = [];
+  if (evening) prompts.push(promptCard('Akşam · 3 dakika', 'Bugün nasıl geçti?', 'Günü değerlendir, yarım kalanları taşı ve yarını planla.', 'evening', 'Günü kapat'));
+  if (morning) prompts.push(promptCard('Sabah · 1 dakika', `Günaydın${p.name ? ', ' + esc(p.name) : ''}!`, 'Nasıl uyuduğunu, enerjini ve bugünün en önemli işlerini yaz.', 'morning', 'Güne başla'));
+  if (ready && !morning && !woop) prompts.push(promptCard(fromKey(todayKey()).getDay() === 1 ? 'Yeni hafta · 2 dakika' : 'Bu hafta · 2 dakika', 'Bu haftanın hedefini belirle', 'Dört kısa soru: dilek, sonuç, engel ve plan.', 'woop', 'Haftayı planla', '<button class="btn ghost" data-act="woop-skip">Bu hafta geç</button>'));
+  if (ready && !morning && new Date().getDate() <= 5 && !(p.monthGoal && monthKey() in p.monthGoal)) prompts.push(promptCard('Yeni ay', 'Bu ay için tek bir hedef seç', '', 'month', 'Hedef seç', '<button class="btn ghost" data-act="month-skip">Geç</button>'));
   return `
   <div class="stack">
     ${header(`${greeting()}${p.name ? ', ' + esc(p.name) : ''}`, esc(fmtLong(S.date)))}
     ${p.why ? `<p class="why">${esc(p.why)}</p>` : ''}
-    ${timeline()}
-    ${showReview ? reviewCard() : ''}
+    ${prompts.join('')}
     ${isToday && d.review ? closedCard() : ''}
-    ${showCheckin && hour < 17 ? checkinCard() : ''}
-    ${showWoop ? woopCard() : ''}
-    ${showMonth ? monthCard() : ''}
+
+    <p class="sec">Şimdi</p>
     ${woop && !woop.skipped ? `<p class="banner"><strong>Haftanın hedefi:</strong> ${esc(woop.wish)}. Eğer ${esc(woop.obstacle)} → ${esc(woop.plan)}</p>` : ''}
     ${d.checkin?.intention ? `<p class="banner">Bugünkü niyetin: <strong>${esc(d.checkin.intention)}</strong></p>` : ''}
     <section class="card next">
@@ -1082,7 +1160,12 @@ function viewToday() {
       : `<p class="what">${total ? 'Bugünkü her şeyi bitirdin. Kendine bir teşekkür et.' : 'Planında henüz bir şey yok.'}</p>
         <div class="row"><button class="btn on-accent" data-go="plan">${total ? 'Plana bak' : 'Günü planla'}</button></div>`}
     </section>
-    ${wins.length ? `<section class="stack" style="gap:8px"><h3>Bugün bitirdiklerin</h3><div class="wins">${wins.map(x => `<span class="win">${ICON.check}${esc(x.l)}</span>`).join('')}</div></section>` : ''}
+    ${trackCard()}
+
+    <p class="sec">Günün akışı</p>
+    ${timeline()}
+
+    <p class="sec">Bugünün özeti</p>
     <div class="stats">
       <button class="stat" data-go="plan"><span class="eyebrow">Görevler</span><span class="big num">${done}/${total}</span><span class="bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></span></button>
       <button class="stat" data-go="odak" data-z="pomo"><span class="eyebrow">Odak</span><span class="big num">${fm} dk</span><span class="small muted num">${d.focus.length} pomodoro</span></button>
@@ -1091,11 +1174,11 @@ function viewToday() {
         <span class="small num" style="color:${ks.col}">${ks.txt}</span></button>
       <div class="stat"><span class="eyebrow">Su · ${d.water}/${p.waterGoal}${d.water >= (Number(p.waterGoal) || 8) + 2 ? ' · harika' : ''}</span><div class="water">${water}</div></div>
     </div>
-    ${trackCard()}
+    ${wins.length ? `<section class="stack" style="gap:8px"><h3>Bugün bitirdiklerin</h3><div class="wins">${wins.map(x => `<span class="win">${ICON.check}${esc(x.l)}</span>`).join('')}</div></section>` : ''}
+
     ${habitsCard(true)}
     ${coachCard()}
-    ${showCheckin && hour >= 17 ? `<button class="btn" data-act="ci-late">Sabah değerlendirmesini şimdi yap</button>` : ''}
-    ${S.ci.late ? checkinCard() : ''}
+    ${ready && !d.review && !evening && d.checkin ? `<button class="btn ghost" data-act="flow" data-k="evening">Günü şimdi kapat</button>` : ''}
   </div>`;
 }
 function trackCard() {
@@ -1240,6 +1323,10 @@ function viewPomo() {
     <p class="banner">25 dakika kutsal bir sayı değil. Araştırmalar kısa molaların yorgunluğu azalttığını gösteriyor, ama en iyi süre işin türüne göre değişiyor. Derin işler için Derin modu, akışı bölmek istemiyorsan Esnek modu dene. Telefon kilitlenirse süre yine doğru işler; sayfaya dönünce kaldığı yerden devam eder.</p>`;
 }
 
+function groupRows(list, fn) {
+  const g = [['Önemli işler', list.filter(t => !t.done && t.mit)], ['Diğer işler', list.filter(t => !t.done && !t.mit)], ['Bitenler', list.filter(t => t.done)]];
+  return g.filter(([, l]) => l.length).map(([h, l]) => `<li class="grp">${h} · ${l.length}</li>${l.map(fn).join('')}`).join('');
+}
 function viewPlan() {
   const tasks = sortedTasks(S.day);
   return `
@@ -1256,7 +1343,7 @@ function viewPlan() {
       <button class="btn primary">${ICON.plus}Plana ekle</button>
     </form>
     <section class="card">
-      ${tasks.length ? `<ul class="list">${tasks.map(t => `
+      ${tasks.length ? `<ul class="list">${groupRows(tasks, t => `
         <li class="item${t.done ? ' done' : ''}">
           <button class="check" data-act="task-toggle" data-id="${t.id}" aria-label="${t.done ? 'Geri al' : 'Bitti olarak işaretle'}">${ICON.check}</button>
           <span class="t num">${esc(t.time || '—')}</span>
@@ -1264,7 +1351,7 @@ function viewPlan() {
           ${!t.done && S.ai && (t.est || 0) > 2 ? `<button class="btn ghost" style="padding:0 6px" data-act="split" data-id="${t.id}">Böl</button>` : ''}
           ${!t.done && S.date === todayKey() ? `<button class="play" data-act="focus-task" data-id="${t.id}" aria-label="Bu işe odaklan">${ICON.play}</button>` : ''}
           <button class="del" data-act="task-del" data-id="${t.id}" aria-label="Sil">${ICON.x}</button>
-        </li>`).join('')}</ul>` : '<p class="empty">Bu gün için görev yok. Yukarıdan ekle ya da koçtan enerjine göre plan iste.</p>'}
+        </li>`)}</ul>` : '<p class="empty">Bu gün için görev yok. Yukarıdan ekle ya da koçtan enerjine göre plan iste.</p>'}
     </section>
     ${S.ai ? `<button class="btn soft" data-act="plan-ai" ${S.planBusy ? 'disabled' : ''}>${ICON.spark}${S.planBusy ? 'Koç planlıyor…' : 'Koçla günü enerjime göre planla'}</button>` : ''}
     ${S.planSugg?.length ? `<section class="card sugg">
@@ -1435,7 +1522,7 @@ function rewardsCard() {
 }
 function weekTable() {
   const keys = weekKeys();
-  const rows = [['Uyku', 's', 9, ' sa'], ['Enerji', 'e', 5, ''], ['Ruh hali', 'm', 5, ''], ['Odak', 'f', 150, ' dk'], ['Görev', 'td', 0, '']];
+  const rows = [['Uyku', 's', 9, ' sa'], ['Enerji', 'e', 5, ''], ['Ruh hali', 'm', 5, ''], ['Odak', 'f', 150, ' dk'], ['Gün puanı', 'r', 5, ''], ['Görev', 'td', 0, '']];
   const cell = (v, max) => `<td style="background:color-mix(in srgb,var(--accent) ${v && max ? Math.round(clamp(v / max, 0, 1) * 55) + 8 : 0}%,var(--sunken))">${v || '·'}</td>`;
   return `<div class="wk"><table><thead><tr><th></th>${keys.map(k => `<th style="text-align:center">${esc(fmtShortDay(k))}</th>`).join('')}</tr></thead><tbody>
     ${rows.map(([l, f, max]) => `<tr><th>${l}</th>${keys.map(k => { const h = histFor(k); return f === 'td' ? `<td style="background:var(--sunken)">${h && h.tt ? `${h.td}/${h.tt}` : '·'}</td>` : cell(h?.[f] || 0, max); }).join('')}</tr>`).join('')}
@@ -1682,6 +1769,17 @@ document.addEventListener('click', e => {
     case 'month-skip': saveProfile({ monthGoal: { ...(S.profile.monthGoal || {}), [monthKey()]: '-' } }); break;
     case 'brk': S.timer.brk = a.dataset.k; saveTimer(); if (a.dataset.k === 'su') { d.water += 1; saveDay(); toast(`Su: ${d.water}/${S.profile.waterGoal} bardak`); } else render(); break;
     case 'split': splitTask(id); break;
+    case 'flow': openFlow(a.dataset.k); break;
+    case 'flow-close': S.flow = null; renderFlow(); break;
+    case 'fseg': { S.flow.d[a.dataset.k] = +a.dataset.v; a.parentElement.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b === a)); const lb = document.getElementById('fseg-' + a.dataset.k); if (lb) lb.textContent = SEG_LABELS()[a.dataset.k][+a.dataset.v - 1]; break; }
+    case 'flow-back': { flowSteps()[S.flow.step].collect?.(S.flow.d); S.flow.step--; renderFlow(); break; }
+    case 'flow-next': {
+      const st = flowSteps()[S.flow.step]; st.collect?.(S.flow.d);
+      const err = st.check?.(S.flow.d); if (err) { toast(err); break; }
+      if (S.flow.step >= flowSteps().length - 1) { const f = S.flow; S.flow = null; renderFlow(); FLOWS[f.kind].finish(f.d); render(); }
+      else { S.flow.step++; renderFlow(); }
+      break;
+    }
     case 'reward-done': saveProfile({ rewards: (S.profile.rewards || []).map(r => r.id === id ? { ...r, done: true } : r) }); toast('Afiyet olsun; hak ettin.'); break;
     case 'reward-del': saveProfile({ rewards: (S.profile.rewards || []).filter(r => r.id !== id) }); break;
     case 'share-week': shareWeek(); break;
